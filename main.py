@@ -1,4 +1,3 @@
-# main.py
 """
 Smart Contract Automation - Main Entry Point
 ===========================================
@@ -83,8 +82,8 @@ class AutomationCLI:
         finally:
             self._cleanup()
     
-    def run_single_project(self, project_name: str) -> None:
-        """Run automation for a single project"""
+    def run_single_project(self, project_name: str, enable_testing: bool = False) -> None:
+        """Run automation for a single project with optional testing"""
         try:
             projects = self.config_manager.get_projects()
             project = next((p for p in projects if p['name'] == project_name), None)
@@ -94,19 +93,89 @@ class AutomationCLI:
                 return
             
             self.logger.info(f"Running automation for project: {project_name}")
+            if enable_testing:
+                self.logger.info("Testing is ENABLED for this run")
+            else:
+                self.logger.info("Testing is DISABLED for this run (compile only)")
+            
             result = self.orchestrator.execute('process_single', project=project)
             
             print(f"\nProject: {project_name}")
             print(f"Status: {result.get('status', 'unknown')}")
             print(f"Duration: {result.get('duration', 0):.2f} seconds")
             
+            # Show compilation results
+            compile_result = result.get('steps', {}).get('contract_compilation', {})
+            if compile_result:
+                print(f"\nCompilation:")
+                print(f"  Status: {compile_result.get('status', 'unknown')}")
+                print(f"  Attempts: {compile_result.get('attempts', 'unknown')}")
+                
+                if compile_result.get('has_warnings', False):
+                    warnings = compile_result.get('warnings', [])
+                    print(f"  Warnings: {len(warnings)} detected")
+                    for warning in warnings:
+                        print(f"    - {warning.get('message', 'Unknown warning')}")
+            
+            # Run optional testing if requested
+            if enable_testing and result.get('status') == 'completed':
+                print(f"\n🧪 Running optional tests...")
+                test_result = self.orchestrator.execute('test_contract', 
+                                                       project=project, 
+                                                       workspace_path=result.get('steps', {}).get('git_clone', {}).get('workspace_path', ''))
+                
+                print(f"Testing:")
+                print(f"  Status: {test_result.get('status', 'unknown')}")
+                if test_result.get('test_result'):
+                    tr = test_result['test_result'].get('test_results', {})
+                    print(f"  Tests Passed: {tr.get('passed', 0)}")
+                    print(f"  Tests Failed: {tr.get('failed', 0)}")
+                    print(f"  Total Tests: {tr.get('total', 0)}")
+            
             if result.get('status') == 'completed':
-                print(f"Pull Request: {result.get('pr_url', 'N/A')}")
+                print(f"\n✅ Pull Request: {result.get('pr_url', 'N/A')}")
             else:
-                print(f"Error: {result.get('error', 'Unknown error')}")
+                print(f"\n❌ Error: {result.get('error', 'Unknown error')}")
                 
         except Exception as e:
             self.logger.error(f"Single project automation failed: {str(e)}")
+    
+    def test_project(self, project_name: str) -> None:
+        """Run tests only for a specific project"""
+        try:
+            projects = self.config_manager.get_projects()
+            project = next((p for p in projects if p['name'] == project_name), None)
+            
+            if not project:
+                self.logger.error(f"Project '{project_name}' not found in configuration")
+                return
+            
+            # Find the workspace path (assuming project structure)
+            workspace_path = f"./workspaces/{project_name}"
+            if not Path(workspace_path).exists():
+                print(f"❌ Workspace not found: {workspace_path}")
+                print("   Run the project first with: python main.py --action single --project {project_name}")
+                return
+            
+            print(f"🧪 Running tests for project: {project_name}")
+            test_result = self.orchestrator.execute('test_contract', 
+                                                   project=project, 
+                                                   workspace_path=workspace_path)
+            
+            print(f"\nTest Results:")
+            print(f"Status: {test_result.get('status', 'unknown')}")
+            
+            if test_result.get('test_result'):
+                tr = test_result['test_result'].get('test_results', {})
+                print(f"Tests Passed: {tr.get('passed', 0)}")
+                print(f"Tests Failed: {tr.get('failed', 0)}")
+                print(f"Total Tests: {tr.get('total', 0)}")
+                
+                if test_result['status'] == 'failed':
+                    print(f"Error Details: {test_result['test_result'].get('errors', 'Unknown error')}")
+            
+        except Exception as e:
+            self.logger.error(f"Project testing failed: {str(e)}")
     
     def show_status(self) -> None:
         """Show current automation status"""
@@ -186,9 +255,11 @@ def main():
     
     parser.add_argument('--config', '-c', default='config/settings.yaml',
                        help='Path to configuration file')
-    parser.add_argument('--action', '-a', choices=['run', 'status', 'summary', 'single'],
+    parser.add_argument('--action', '-a', choices=['run', 'status', 'summary', 'single', 'test'],
                        default='run', help='Action to perform')
     parser.add_argument('--project', '-p', help='Project name (for single project mode)')
+    parser.add_argument('--with-tests', action='store_true',
+                       help='Enable testing for single project mode')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     
@@ -208,8 +279,15 @@ def main():
     elif args.action == 'single':
         if not args.project:
             print("Error: --project is required for single project mode")
+            print("Usage: python main.py --action single --project PROJECT_NAME [--with-tests]")
             sys.exit(1)
-        cli.run_single_project(args.project)
+        cli.run_single_project(args.project, enable_testing=args.with_tests)
+    elif args.action == 'test':
+        if not args.project:
+            print("Error: --project is required for test mode")
+            print("Usage: python main.py --action test --project PROJECT_NAME")
+            sys.exit(1)
+        cli.test_project(args.project)
 
 
 if __name__ == "__main__":
