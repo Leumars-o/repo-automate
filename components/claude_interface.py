@@ -162,7 +162,6 @@ class ClaudeInterface(BaseComponent):
         - Contract File: {Path(contract_file).name}
         - Blockchain: {blockchain}
         - Language: {language}
-        - Contract Type: {project.get('contract_type', 'basic')}
         
         The README should include:
         1. Project title and description
@@ -177,9 +176,7 @@ class ClaudeInterface(BaseComponent):
         10. Security considerations
         11. Contributing guidelines
         12. License information
-        13. Contact information
         14. Troubleshooting section
-        15. Changelog/version history placeholder
         
         Make it professional, well-structured with proper markdown formatting,
         and include code examples where appropriate. Analyze the actual contract
@@ -305,33 +302,33 @@ class ClaudeInterface(BaseComponent):
         finally:
             os.chdir(original_cwd)
     
-    def optimize_contract(self, workspace_path: str) -> str:
-        """Optimize the contract code"""
-        try:
-            original_cwd = os.getcwd()
-            os.chdir(workspace_path)
+    # def optimize_contract(self, workspace_path: str) -> str:
+    #     """Optimize the contract code"""
+    #     try:
+    #         original_cwd = os.getcwd()
+    #         os.chdir(workspace_path)
             
-            prompt = """
-            Optimize the smart contract in this directory:
-            1. Improve gas efficiency
-            2. Enhance security
-            3. Optimize data structures
-            4. Reduce code complexity
-            5. Add better error handling
+    #         prompt = """
+    #         Optimize the smart contract in this directory:
+    #         1. Improve gas efficiency
+    #         2. Enhance security
+    #         3. Optimize data structures
+    #         4. Reduce code complexity
+    #         5. Add better error handling
             
-            Please optimize the contract while maintaining functionality.
-            """
+    #         Please optimize the contract while maintaining functionality.
+    #         """
             
-            result = self._execute_claude_command(prompt)
-            contract_file = self._find_contract_file(workspace_path)
+    #         result = self._execute_claude_command(prompt)
+    #         contract_file = self._find_contract_file(workspace_path)
             
-            self.log_info(f"Optimized contract: {contract_file}")
-            return contract_file
+    #         self.log_info(f"Optimized contract: {contract_file}")
+    #         return contract_file
             
-        except Exception as e:
-            raise ClaudeError(f"Failed to optimize contract: {str(e)}")
-        finally:
-            os.chdir(original_cwd)
+    #     except Exception as e:
+    #         raise ClaudeError(f"Failed to optimize contract: {str(e)}")
+    #     finally:
+    #         os.chdir(original_cwd)
     
     def generate_tests(self, workspace_path: str, project: Dict[str, Any]) -> List[str]:
         """Generate test files for the contract"""
@@ -381,7 +378,7 @@ class ClaudeInterface(BaseComponent):
             'generate_contract': self.generate_smart_contract,
             'fix_error': self.fix_contract_error,
             'analyze_structure': self.analyze_contract_structure,
-            'optimize': self.optimize_contract,
+            # 'optimize': self.optimize_contract,
             'generate_tests': self.generate_tests,
             'generate_readme': self.generate_readme
         }
