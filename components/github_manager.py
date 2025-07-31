@@ -1,234 +1,313 @@
-from typing import Dict, Any, Optional, List
-from github import Github
-from github.Repository import Repository
+# components/github_manager.py - UPDATED with state tracking
+from typing import Dict, Any, List, Optional
+import time
+from pathlib import Path
 from core.base_component import BaseComponent
 from core.exceptions import GitHubError
-import time
+from utils.state_tracker import StateTracker
 
 class GitHubManager(BaseComponent):
-    """Handles all GitHub operations including repository management"""
-
-    def __init__(self, config: Dict[str, Any], logger: Optional[Any] = None):
-        # Initialize tokens and clients to None before calling super().__init__
-        self.tokens = None
-        self.github_clients = None
-        self.current_client_index = 0
+    """Manages GitHub operations with intelligent token rotation and state tracking"""
+    
+    def __init__(self, config: Dict[str, Any], logger=None):
+        self.github_config = config.get('github', {})
+        self.tokens = self.github_config.get('tokens', [])
+        self.current_token_index = 0
+        self.manual_token_index = None
         
-        # Now call parent initialization which will call _initialize()
+        # Initialize state tracker
+        self.state_tracker = StateTracker()
+        self.state_tracker.initialize_tokens(self.tokens)
+        self.state_tracker.cleanup_stale_progress()  # Clean up any stale progress from crashes
+        
         super().__init__(config, logger)
-
+        
     def _initialize(self) -> None:
-        """Initialize GitHub clients with tokens"""
+        """Initialize GitHub manager"""
         self.validate_config(['github'])
         
-        # Get tokens from config
-        github_config = self.config['github']
-        tokens = github_config.get('tokens', [])
+        if not self.tokens:
+            raise GitHubError("No GitHub tokens found in configuration")
         
-        if not tokens:
-            raise GitHubError("No GitHub tokens provided in configuration")
+        self.log_info(f"Initialized with {len(self.tokens)} GitHub tokens")
         
-        if not isinstance(tokens, list):
-            tokens = [tokens]  # Convert single token to list
+        # Log state summary
+        summary = self.state_tracker.get_state_summary()
+        self.log_info(f"Token state: {summary['token_state']}")
+        self.log_info(f"Project state: {summary['project_state']}")
+    
+    def set_manual_token_index(self, token_index: Optional[int]) -> None:
+        """Set manual token index for single project execution"""
+        self.manual_token_index = token_index
+        if token_index is not None:
+            self.log_info(f"Manual token index set to: {token_index}")
+    
+    def get_next_token_index(self, project_name: str = None) -> int:
+        """Get the next available token index based on usage and availability"""
+        token_index = self.state_tracker.get_next_available_token_index(
+            self.tokens, 
+            self.manual_token_index
+        )
         
-        self.tokens = tokens
-        self.github_clients = []
-        self.current_client_index = 0
+        self.current_token_index = token_index
+        self.log_info(f"Selected token index {token_index} for project: {project_name or 'unknown'}")
         
-        # Initialize GitHub clients for each token
-        for i, token in enumerate(self.tokens):
-            try:
-                client = Github(token.strip())
-                # Test the token by making a simple API call
-                user = client.get_user()
-                self.log_info(f"Initialized GitHub client {i+1} for user: {user.login}")
-                self.github_clients.append(client)
-            except Exception as e:
-                self.log_error(f"Failed to initialize GitHub client with token {i+1}: {e}")
-                # Continue with other tokens instead of failing completely
-                continue
+        return token_index
+    
+    def _get_current_token(self) -> str:
+        """Get the current active token"""
+        if not self.tokens:
+            raise GitHubError("No GitHub tokens available")
         
-        if not self.github_clients:
-            raise GitHubError("No valid GitHub clients could be initialized")
+        if self.current_token_index >= len(self.tokens):
+            self.current_token_index = 0
         
-        self.log_info(f"Successfully initialized {len(self.github_clients)} GitHub client(s)")
-
-    def get_current_client(self) -> Github:
-        """Get the current GitHub client with rate limit rotation"""
-        if not self.github_clients:
-            raise GitHubError("No GitHub clients available")
+        return self.tokens[self.current_token_index]
+    
+    def rotate_token(self, project_name: str = None, force: bool = False) -> None:
+        """Rotate to next available token"""
+        if len(self.tokens) <= 1 and not force:
+            self.log_info("Only one token available, skipping rotation")
+            return
         
-        client = self.github_clients[self.current_client_index]
+        old_index = self.current_token_index
         
-        # Check rate limit
-        rate_limit = client.get_rate_limit()
-        if rate_limit.core.remaining < 10:  # Switch if less than 10 requests remaining
-            self.log_warning(f"Client {self.current_client_index + 1} rate limit low, switching clients")
-            self._rotate_client()
-            client = self.github_clients[self.current_client_index]
+        # Get next available token (excluding manual override for rotation)
+        self.manual_token_index = None  # Clear manual override for rotation
+        new_index = self.state_tracker.get_next_available_token_index(self.tokens)
         
-        return client
-
-    def _rotate_client(self) -> None:
-        """Rotate to the next available client"""
-        if len(self.github_clients) > 1:
-            self.current_client_index = (self.current_client_index + 1) % len(self.github_clients)
-            self.log_info(f"Switched to GitHub client {self.current_client_index + 1}")
-
-    def create_repository(self, repo_data: Dict[str, Any]) -> Repository:
-        """Create a new GitHub repository"""
+        self.current_token_index = new_index
+        
+        self.log_info(f"Token rotated from index {old_index} to {new_index} for project: {project_name or 'batch'}")
+    
+    def record_token_usage(self, project_name: str, success: bool = True, error: str = None) -> None:
+        """Record token usage in state tracker"""
+        self.state_tracker.record_token_usage(
+            self.current_token_index,
+            self.tokens,
+            project_name,
+            success,
+            error
+        )
+    
+    def create_repository(self, project: Dict[str, Any]) -> str:
+        """Create GitHub repository"""
         try:
-            client = self.get_current_client()
+            from github import Github
+            
+            project_name = project['name']
+            description = project.get('description', f'Smart contract project: {project_name}')
+            
+            # Get current token
+            token = self._get_current_token()
+            client = Github(token)
+            
+            # Get authenticated user
             user = client.get_user()
             
-            repo_name = repo_data['name']
-            description = repo_data.get('description', '')
-            private = repo_data.get('private', False)
+            # Check if repo already exists
+            try:
+                existing_repo = user.get_repo(project_name)
+                repo_url = existing_repo.clone_url
+                self.log_info(f"Repository {project_name} already exists: {repo_url}")
+                return repo_url
+            except Exception:
+                # Repo doesn't exist, create it
+                pass
             
-            self.log_info(f"Creating repository: {repo_name}")
-            
+            # Create new repository
             repo = user.create_repo(
-                name=repo_name,
+                name=project_name,
                 description=description,
-                private=private,
-                auto_init=repo_data.get('auto_init', True),
-                has_issues=repo_data.get('has_issues', True),
-                has_projects=repo_data.get('has_projects', False),
-                has_wiki=repo_data.get('has_wiki', False)
+                private=project.get('private', False),
+                auto_init=True,
+                gitignore_template=project.get('gitignore_template', 'Python')
             )
             
-            self.log_info(f"Successfully created repository: {repo.full_name}")
-            return repo
+            repo_url = repo.clone_url
+            self.log_info(f"Created GitHub repository: {repo_url}")
+            
+            # Record successful token usage
+            self.record_token_usage(project_name, success=True)
+            
+            return repo_url
             
         except Exception as e:
-            error_msg = f"Failed to create repository {repo_data.get('name', 'unknown')}: {e}"
-            self.log_error(error_msg)
-            raise GitHubError(error_msg)
-
-    def get_repository(self, repo_name: str) -> Optional[Repository]:
-        """Get an existing repository"""
+            error_msg = str(e)
+            self.log_error(f"Failed to create repository {project_name}: {error_msg}")
+            
+            # Record failed token usage
+            self.record_token_usage(project_name, success=False, error=error_msg)
+            
+            raise GitHubError(f"Failed to create repository: {error_msg}")
+    
+    def create_pull_request(self, project: Dict[str, Any], source_branch: str = "main", 
+                          target_branch: str = "main") -> str:
+        """Create pull request"""
         try:
-            client = self.get_current_client()
+            from github import Github
+            
+            project_name = project['name']
+            token = self._get_current_token()
+            client = Github(token)
+            
+            user = client.get_user()
+            repo = user.get_repo(project_name)
+            
+            # If source and target are the same, we need to create a feature branch first
+            if source_branch == target_branch:
+                self.log_warning(f"Source and target branches are the same ({source_branch}), this may not create a proper PR")
+            
+            # Create pull request
+            title = f"Add {project_name} smart contract"
+            body = f"""
+# {project_name} Smart Contract
+
+This pull request adds the smart contract implementation for {project_name}.
+
+## Changes
+- Added smart contract code
+- Added project configuration
+- Compiled and tested successfully
+
+## Generated by
+Smart Contract Automation System using token index {self.current_token_index}
+            """.strip()
+            
+            pr = repo.create_pull(
+                title=title,
+                body=body,
+                head=source_branch,
+                base=target_branch
+            )
+            
+            pr_url = pr.html_url
+            self.log_info(f"Created pull request: {pr_url}")
+            
+            # Record successful token usage
+            self.record_token_usage(project_name, success=True)
+            
+            return pr_url
+            
+        except Exception as e:
+            error_msg = str(e)
+            self.log_error(f"Failed to create pull request for {project_name}: {error_msg}")
+            
+            # Record failed token usage
+            self.record_token_usage(project_name, success=False, error=error_msg)
+            
+            raise GitHubError(f"Failed to create pull request: {error_msg}")
+    
+    def get_user_info(self) -> Dict[str, str]:
+        """Get current GitHub user information"""
+        try:
+            from github import Github
+            
+            token = self._get_current_token()
+            client = Github(token)
             user = client.get_user()
             
-            repo = user.get_repo(repo_name)
-            self.log_info(f"Retrieved repository: {repo.full_name}")
-            return repo
+            user_info = {
+                'login': user.login,
+                'name': user.name,
+                'email': None,
+                'public_repos': user.public_repos
+            }
             
-        except Exception as e:
-            self.log_warning(f"Repository {repo_name} not found or inaccessible: {e}")
-            return None
-
-    def delete_repository(self, repo_name: str) -> bool:
-        """Delete a repository"""
-        try:
-            repo = self.get_repository(repo_name)
-            if repo:
-                repo.delete()
-                self.log_info(f"Successfully deleted repository: {repo_name}")
-                return True
-            else:
-                self.log_warning(f"Repository {repo_name} not found for deletion")
-                return False
-                
-        except Exception as e:
-            error_msg = f"Failed to delete repository {repo_name}: {e}"
-            self.log_error(error_msg)
-            raise GitHubError(error_msg)
-
-    def create_file(self, repo_name: str, file_path: str, content: str, commit_message: str) -> bool:
-        """Create a file in a repository"""
-        try:
-            repo = self.get_repository(repo_name)
-            if not repo:
-                raise GitHubError(f"Repository {repo_name} not found")
-            
-            repo.create_file(
-                path=file_path,
-                message=commit_message,
-                content=content
-            )
-            
-            self.log_info(f"Created file {file_path} in {repo_name}")
-            return True
-            
-        except Exception as e:
-            error_msg = f"Failed to create file {file_path} in {repo_name}: {e}"
-            self.log_error(error_msg)
-            raise GitHubError(error_msg)
-
-    def update_file(self, repo_name: str, file_path: str, content: str, commit_message: str) -> bool:
-        """Update an existing file in a repository"""
-        try:
-            repo = self.get_repository(repo_name)
-            if not repo:
-                raise GitHubError(f"Repository {repo_name} not found")
-            
-            # Get the current file to get its SHA
-            file_obj = repo.get_contents(file_path)
-            
-            repo.update_file(
-                path=file_path,
-                message=commit_message,
-                content=content,
-                sha=file_obj.sha
-            )
-            
-            self.log_info(f"Updated file {file_path} in {repo_name}")
-            return True
-            
-        except Exception as e:
-            error_msg = f"Failed to update file {file_path} in {repo_name}: {e}"
-            self.log_error(error_msg)
-            raise GitHubError(error_msg)
-
-    def get_rate_limit_status(self) -> Dict[str, Any]:
-        """Get rate limit status for all clients"""
-        status = {}
-        
-        for i, client in enumerate(self.github_clients):
+            # Try to get email with error handling
             try:
-                rate_limit = client.get_rate_limit()
-                status[f"client_{i+1}"] = {
-                    'remaining': rate_limit.core.remaining,
-                    'limit': rate_limit.core.limit,
-                    'reset_time': rate_limit.core.reset.isoformat()
-                }
-            except Exception as e:
-                status[f"client_{i+1}"] = {'error': str(e)}
-        
-        return status
-
-    def get_status(self) -> Dict[str, Any]:
-        """Get overall GitHub manager status"""
-        try:
-            return {
-                'clients_count': len(self.github_clients),
-                'current_client': self.current_client_index + 1,
-                'rate_limits': self.get_rate_limit_status(),
-                'tokens_configured': len(self.tokens),
-                'status': 'operational'
-            }
+                emails = user.get_emails()
+                primary_email = None
+                
+                for email_obj in emails:
+                    if email_obj.primary:
+                        primary_email = email_obj.email
+                        break
+                
+                if not primary_email and emails:
+                    primary_email = emails[0].email
+                
+                user_info['email'] = primary_email
+                
+            except Exception as email_error:
+                user_info['email'] = f"{user.login}@users.noreply.github.com"
+                self.log_warning(f"Could not retrieve email, using noreply format: {email_error}")
+            
+            self.log_info(f"Retrieved GitHub user info for: {user_info['login']} (token index: {self.current_token_index})")
+            return user_info
+            
+        except ImportError:
+            raise GitHubError("PyGithub not installed, cannot retrieve user info")
         except Exception as e:
-            return {
-                'status': 'error',
-                'error': str(e),
-                'clients_count': len(self.github_clients) if self.github_clients else 0
-            }
-
-    def execute(self, operation: str, *args, **kwargs) -> Any:
-        """Execute a GitHub operation"""
+            error_msg = str(e)
+            self.log_error(f"Failed to retrieve GitHub user info: {error_msg}")
+            
+            # Don't record token usage failure for user info requests
+            # as this might be called frequently for validation
+            
+            raise GitHubError(f"Failed to retrieve GitHub user info: {error_msg}")
+    
+    def check_token_validity(self, token_index: Optional[int] = None) -> bool:
+        """Check if a specific token is valid"""
+        try:
+            if token_index is not None:
+                old_index = self.current_token_index
+                self.current_token_index = token_index
+                
+            user_info = self.get_user_info()
+            
+            if token_index is not None:
+                self.current_token_index = old_index
+                
+            return True
+            
+        except Exception:
+            return False
+    
+    def get_available_tokens(self) -> List[int]:
+        """Get list of available (non-blacklisted) token indices"""
+        available = []
+        for i, token in enumerate(self.tokens):
+            if self.check_token_validity(i):
+                available.append(i)
+        return available
+    
+    def execute(self, operation: str, **kwargs) -> Any:
+        """Execute GitHub manager operation"""
         operations = {
             'create_repo': self.create_repository,
-            'get_repo': self.get_repository,
-            'delete_repo': self.delete_repository,
-            'create_file': self.create_file,
-            'update_file': self.update_file,
-            'get_status': self.get_status,
-            'get_rate_limit': self.get_rate_limit_status
+            'create_pr': self.create_pull_request,
+            'get_user_info': self.get_user_info,
+            'rotate_token': self.rotate_token,
+            'check_token': self.check_token_validity,
+            'get_available_tokens': self.get_available_tokens
         }
         
         if operation not in operations:
-            raise GitHubError(f"Unknown operation: {operation}")
+            raise GitHubError(f"Unknown GitHub operation: {operation}")
         
-        return operations[operation](*args, **kwargs)
+        try:
+            return operations[operation](**kwargs)
+        except Exception as e:
+            self.log_error(f"GitHub operation '{operation}' failed: {str(e)}")
+            raise
+    
+    def cleanup(self) -> None:
+        """Clean up GitHub resources"""
+        # Save final state
+        summary = self.state_tracker.get_state_summary()
+        self.log_info(f"Final state summary: {summary}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get GitHub manager status"""
+        available_tokens = self.get_available_tokens()
+        summary = self.state_tracker.get_state_summary()
+        
+        return {
+            'total_tokens': len(self.tokens),
+            'current_token_index': self.current_token_index,
+            'available_tokens': len(available_tokens),
+            'available_token_indices': available_tokens,
+            'manual_token_override': self.manual_token_index,
+            'state_summary': summary
+        }
