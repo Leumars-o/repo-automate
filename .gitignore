@@ -1,0 +1,5 @@
+# Secrets directory
+secrets/
+
+# venv
+claude-env/

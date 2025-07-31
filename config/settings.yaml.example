@@ -1,0 +1,52 @@
+github:
+  tokens:
+    - "ghp_token1_here"
+    - "ghp_token2_here"
+    # Add all 50 tokens
+
+
+  default_settings:
+    private: false
+    auto_init: true
+    has_issues: true
+    has_projects: false
+    has_wiki: false
+
+projects:
+  - name: "DeFiLendingProtocol"
+    description: "A decentralized lending protocol with collateral management"
+    blockchain: "stacks"
+    contract_type: "clarity"
+    priority: "high"
+    
+  - name: "NFTMarketplace"
+    description: "NFT trading platform with royalty distribution"
+    blockchain: "stacks"
+    contract_type: "clarity"
+    priority: "medium"
+
+smart_contracts:
+  blockchain: "stacks"
+  language: "clarity"
+  testing_framework: "clarinet"
+  deployment_network: "testnet"
+  contract_template: "basic"
+  
+automation:
+  max_retries: 3
+  retry_delay: 5
+  timeout: 300
+  parallel_workers: 3
+  log_level: "INFO"
+  cleanup_on_failure: true
+  
+results:
+  output_file: "results/automation_results.json"
+  backup_results: true
+  track_metrics: true
+
+claude:
+  model: "claude-sonnet-4"
+  timeout: 120
+  max_tokens: 4000
+  temperature: 0.1

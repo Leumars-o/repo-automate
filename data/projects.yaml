@@ -1,0 +1,16 @@
+projects:
+- blockchain: stacks
+  contract_type: clarity
+  description: A decentralized lending protocol with collateral management
+  name: DeFiLendingProtocol
+  priority: high
+- blockchain: stacks
+  contract_type: clarity
+  description: NFT trading platform with royalty distribution
+  name: NFTMarketplace
+  priority: medium
+- blockchain: stacks
+  contract_type: clarity
+  description: Decentralized exchange for token swapping
+  name: TokenSwapDEX
+  priority: low

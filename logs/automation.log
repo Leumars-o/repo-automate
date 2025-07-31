@@ -1,0 +1,103 @@
+2025-07-28 14:29:07,968 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 14:29:08,331 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 14:51:58,728 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 14:51:59,376 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:02:52,058 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:03:07,177 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:06:31,546 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:06:32,216 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:06:38,795 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:06:39,051 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:41:53,486 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:44:22,203 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:46:52,397 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:50:29,977 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:51:44,801 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:53:23,016 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:53:24,014 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 15:53:24,780 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 15:53:25,597 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 15:53:25,597 - GitHubManager - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 15:54:21,679 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:54:21,941 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:54:22,735 - automation.main - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 15:54:23,379 - automation.main - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 15:54:24,011 - automation.main - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 15:54:24,012 - automation.main - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 15:58:57,925 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 15:59:56,529 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:00:38,823 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:00:39,851 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 16:00:40,481 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 16:00:41,181 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 16:00:41,181 - SmartContractOrchestrator - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 16:06:07,405 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:06:08,489 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 16:06:09,220 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 16:06:09,873 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 16:06:09,873 - SmartContractOrchestrator - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 16:08:07,697 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:12:22,007 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:12:22,318 - test - INFO - [GitOperations] Workspace initialized at: workspace
+2025-07-28 16:13:10,241 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:13:11,190 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 16:13:11,822 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 16:13:12,434 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 16:13:12,434 - SmartContractOrchestrator - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 16:13:12,434 - SmartContractOrchestrator - INFO - [GitOperations] Workspace initialized at: workspace
+2025-07-28 16:13:13,717 - SmartContractOrchestrator - INFO - [ClaudeInterface] Claude Code CLI verified and available
+2025-07-28 16:14:51,827 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:17:08,357 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:17:08,677 - test - INFO - [ContractManager] Verified tool: clarinet
+2025-07-28 16:17:08,753 - test - WARNING - [ContractManager] Tool stx not found or not responding
+2025-07-28 16:17:21,466 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:17:22,355 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 16:17:23,019 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 16:17:23,634 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 16:17:23,634 - SmartContractOrchestrator - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 16:17:23,635 - SmartContractOrchestrator - INFO - [GitOperations] Workspace initialized at: workspace
+2025-07-28 16:17:25,020 - SmartContractOrchestrator - INFO - [ClaudeInterface] Claude Code CLI verified and available
+2025-07-28 16:17:25,069 - SmartContractOrchestrator - INFO - [ContractManager] Verified tool: clarinet
+2025-07-28 16:17:25,181 - SmartContractOrchestrator - WARNING - [ContractManager] Tool stx not found or not responding
+2025-07-28 16:25:55,029 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:25:56,175 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 16:25:56,762 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 16:25:57,399 - SmartContractOrchestrator - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 16:25:57,400 - SmartContractOrchestrator - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 16:25:57,400 - SmartContractOrchestrator - INFO - [GitOperations] Workspace initialized at: workspace
+2025-07-28 16:25:59,130 - SmartContractOrchestrator - INFO - [ClaudeInterface] Claude Code CLI verified and available
+2025-07-28 16:25:59,164 - SmartContractOrchestrator - INFO - [ContractManager] Verified tool: clarinet
+2025-07-28 16:25:59,224 - SmartContractOrchestrator - WARNING - [ContractManager] Tool stx not found or not responding
+2025-07-28 16:25:59,225 - SmartContractOrchestrator - INFO - [ResultTracker] Result tracker initialized. Output file: results/automation_results.json
+2025-07-28 16:25:59,225 - SmartContractOrchestrator - INFO - [SmartContractOrchestrator] All components initialized successfully
+2025-07-28 16:26:51,987 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:26:52,344 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-28 16:26:53,012 - automation.main - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-28 16:26:53,669 - automation.main - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-28 16:26:54,240 - automation.main - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-28 16:26:54,240 - automation.main - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-28 16:26:54,241 - automation.main - INFO - [GitOperations] Workspace initialized at: workspace
+2025-07-28 16:26:55,570 - automation.main - INFO - [ClaudeInterface] Claude Code CLI verified and available
+2025-07-28 16:26:55,585 - automation.main - INFO - [ContractManager] Verified tool: clarinet
+2025-07-28 16:26:55,670 - automation.main - WARNING - [ContractManager] Tool stx not found or not responding
+2025-07-28 16:26:55,670 - automation.main - INFO - [ResultTracker] Result tracker initialized. Output file: results/automation_results.json
+2025-07-28 16:26:55,670 - automation.main - INFO - [SmartContractOrchestrator] All components initialized successfully
+2025-07-28 16:26:55,671 - automation.main - INFO - Automation system initialized successfully
+2025-07-29 11:43:31,511 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:44:03,693 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:46:31,226 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:48:15,604 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:50:47,366 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:51:07,146 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:56:53,974 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:56:54,870 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-29 11:56:55,541 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-29 11:56:56,143 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-29 11:56:56,143 - GitHubManager - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-29 11:57:03,432 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 11:57:05,141 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 1 for user: mayacodehub
+2025-07-29 11:57:06,034 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 2 for user: alexr-builds
+2025-07-29 11:57:06,663 - GitHubManager - INFO - [GitHubManager] Initialized GitHub client 3 for user: jblake-io
+2025-07-29 11:57:06,663 - GitHubManager - INFO - [GitHubManager] Successfully initialized 3 GitHub client(s)
+2025-07-29 17:27:04,700 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True
+2025-07-29 17:42:56,925 - root - INFO - Logging initialized - Level: INFO, Console: True, File: True

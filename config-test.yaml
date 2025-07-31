@@ -1,0 +1,31 @@
+github:
+  tokens: file:secrets/tokens.yaml
+  default_settings:
+    private: false
+    auto_init: true
+    has_issues: true
+    has_projects: false
+    has_wiki: false
+projects: file:data/test-projects.yaml
+smart_contracts:
+  blockchain: stacks
+  language: clarity
+  testing_framework: clarinet
+  deployment_network: testnet
+  contract_template: basic
+automation:
+  max_retries: 3
+  retry_delay: 5
+  timeout: 300
+  parallel_workers: 3
+  log_level: INFO
+  cleanup_on_failure: true
+results:
+  output_file: results/automation_results.json
+  backup_results: true
+  track_metrics: true
+claude:
+  model: claude-sonnet-4
+  timeout: 120
+  max_tokens: 4000
+  temperature: 0.1

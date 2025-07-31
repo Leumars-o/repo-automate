@@ -1,0 +1,187 @@
+# components/github_manager.py
+from typing import Dict, Any, Optional
+from github import Github, Repository
+from core.base_component import BaseComponent
+from core.exceptions import GitHubError
+import time
+
+class GitHubManager(BaseComponent):
+    """Handles all GitHub operations including repo creation, PR management, and token rotation"""
+    
+    def __init__(self, config: Dict[str, Any], logger=None):
+        super().__init__(config, logger)
+        self.current_token_index = 0
+        self.github_client = None
+        
+        # Fix: Properly extract tokens from config
+        github_config = config.get('github', {})
+        self.tokens = github_config.get('tokens', [])
+        
+        # Ensure tokens is a list
+        if not isinstance(self.tokens, list):
+            if isinstance(self.tokens, str):
+                self.tokens = [self.tokens]
+            else:
+                self.tokens = []
+        
+        # Store default settings
+        self.default_settings = github_config.get('default_settings', {})
+        
+    def _initialize(self) -> None:
+        """Initialize GitHub manager"""
+        self.validate_config(['github'])
+        if not self.tokens:
+            raise GitHubError("No GitHub tokens provided in configuration")
+        
+        # Validate tokens before using them
+        for i, token in enumerate(self.tokens):
+            if not isinstance(token, str) or len(token.strip()) < 20:
+                raise GitHubError(f"Invalid token at index {i}. Token must be a valid string.")
+        
+        self._set_github_client()
+    
+    def _set_github_client(self) -> None:
+        """Set GitHub client with current token"""
+        try:
+            if not self.tokens:
+                raise GitHubError("No tokens available")
+                
+            current_token = self.tokens[self.current_token_index]
+            
+            # Clean the token (remove any whitespace)
+            current_token = current_token.strip()
+            
+            self.github_client = Github(current_token)
+            
+            # Test the token
+            user = self.github_client.get_user()
+            self.log_info(f"Connected to GitHub as: {user.login}")
+            
+        except Exception as e:
+            raise GitHubError(f"Failed to authenticate with GitHub: {str(e)}")
+    
+    def rotate_token(self) -> None:
+        """Rotate to next GitHub token"""
+        if len(self.tokens) > 1:
+            self.current_token_index = (self.current_token_index + 1) % len(self.tokens)
+            self._set_github_client()
+            self.log_info(f"Rotated to token index: {self.current_token_index}")
+        else:
+            self.log_info("Only one token available, cannot rotate")
+    
+    def create_repository(self, project: Dict[str, Any]) -> str:
+        """Create a new GitHub repository"""
+        try:
+            repo_name = project['name']
+            description = project.get('description', '')
+            
+            # Use stored default settings
+            repo_settings = self.default_settings
+            
+            # Create repository
+            repo = self.github_client.get_user().create_repo(
+                name=repo_name,
+                description=description,
+                private=repo_settings.get('private', False),
+                auto_init=repo_settings.get('auto_init', True),
+                has_issues=repo_settings.get('has_issues', True),
+                has_projects=repo_settings.get('has_projects', False),
+                has_wiki=repo_settings.get('has_wiki', False)
+            )
+            
+            self.log_info(f"Created repository: {repo.html_url}")
+            return repo.clone_url
+            
+        except Exception as e:
+            raise GitHubError(f"Failed to create repository '{project['name']}': {str(e)}")
+    
+    def create_pull_request(self, project: Dict[str, Any], branch_name: str = "automation-branch") -> str:
+        """Create a pull request for the project"""
+        try:
+            repo_name = project['name']
+            user = self.github_client.get_user()
+            repo = user.get_repo(repo_name)
+            
+            # Create pull request
+            pr = repo.create_pull(
+                title=f"Add {project['name']} smart contract",
+                body=f"Automated smart contract implementation for {project['description']}",
+                head=branch_name,
+                base="main"
+            )
+            
+            self.log_info(f"Created pull request: {pr.html_url}")
+            return pr.html_url
+            
+        except Exception as e:
+            raise GitHubError(f"Failed to create pull request for '{project['name']}': {str(e)}")
+    
+    def get_repository(self, repo_name: str) -> Repository:
+        """Get repository object"""
+        try:
+            user = self.github_client.get_user()
+            return user.get_repo(repo_name)
+        except Exception as e:
+            raise GitHubError(f"Failed to get repository '{repo_name}': {str(e)}")
+    
+    def check_rate_limit(self) -> Dict[str, Any]:
+        """Check current rate limit status"""
+        try:
+            rate_limit = self.github_client.get_rate_limit()
+            return {
+                'remaining': rate_limit.core.remaining,
+                'limit': rate_limit.core.limit,
+                'reset_time': rate_limit.core.reset
+            }
+        except Exception as e:
+            raise GitHubError(f"Failed to check rate limit: {str(e)}")
+    
+    def wait_for_rate_limit_reset(self) -> None:
+        """Wait for rate limit to reset if needed"""
+        rate_limit_info = self.check_rate_limit()
+        if rate_limit_info['remaining'] < 10:  # Low threshold
+            reset_time = rate_limit_info['reset_time']
+            wait_time = (reset_time.timestamp() - time.time()) + 60  # Add 1 minute buffer
+            if wait_time > 0:
+                self.log_warning(f"Rate limit low, waiting {wait_time} seconds")
+                time.sleep(wait_time)
+    
+    def execute(self, operation: str, **kwargs) -> Any:
+        """Execute GitHub operation"""
+        operations = {
+            'create_repo': self.create_repository,
+            'create_pr': self.create_pull_request,
+            'get_repo': self.get_repository,
+            'rotate_token': self.rotate_token,
+            'check_rate_limit': self.check_rate_limit
+        }
+        
+        if operation not in operations:
+            raise GitHubError(f"Unknown operation: {operation}")
+        
+        try:
+            return operations[operation](**kwargs)
+        except Exception as e:
+            self.log_error(f"GitHub operation '{operation}' failed: {str(e)}")
+            raise
+    
+    def cleanup(self) -> None:
+        """Clean up GitHub resources"""
+        if self.github_client:
+            self.github_client.close()
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get GitHub manager status"""
+        status = {
+            'current_token_index': self.current_token_index,
+            'total_tokens': len(self.tokens),
+            'authenticated': self.github_client is not None,
+        }
+        
+        if self.github_client:
+            try:
+                status['rate_limit'] = self.check_rate_limit()
+            except Exception:
+                status['rate_limit'] = None
+        
+        return status
