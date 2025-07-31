@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# git_token_setup.py
 """
 GitHub Token Setup Script
 ========================
@@ -125,9 +126,35 @@ def test_token_access(token):
         print(f"  - Name: {user.name or 'Not set'}")
         print(f"  - Public repos: {user.public_repos}")
         
+        # Try to get email, but don't fail if permission is missing
+        try:
+            emails = user.get_emails()
+            primary_email = None
+            
+            # Find the primary email
+            for email_obj in emails:
+                if email_obj.primary:
+                    primary_email = email_obj.email
+                    break
+            
+            # If no primary email found, get the first available email
+            if not primary_email and emails:
+                primary_email = emails[0].email
+            
+            print(f"📧 Email: {primary_email if primary_email else 'No email found'}")
+            
+        except Exception as email_error:
+            if "404" in str(email_error) or "Not Found" in str(email_error):
+                print("📧 Email: Not accessible (token missing 'user:email' scope)")
+            else:
+                print(f"📧 Email: Error retrieving ({email_error})")
+        
         # Check rate limit
-        rate_limit = client.get_rate_limit()
-        print(f"  - API rate limit: {rate_limit.core.remaining}/{rate_limit.core.limit}")
+        try:
+            rate_limit = client.get_rate_limit()
+            print(f"  - API rate limit: {rate_limit.core.remaining}/{rate_limit.core.limit}")
+        except Exception:
+            print("  - API rate limit: Unable to check")
         
         return True
         
