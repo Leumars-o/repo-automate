@@ -11,9 +11,10 @@ from components.git_operations import GitOperations
 from components.claude_interface import ClaudeInterface
 from components.contract_manager import ContractManager
 from components.result_tracker import ResultTracker
+from utils.state_tracker import StateTracker
 
 class SmartContractOrchestrator(BaseComponent):
-    """Main orchestrator that coordinates all components"""
+    """Main orchestrator that coordinates all components with state tracking"""
     
     def __init__(self, config: Dict[str, Any], logger=None):
         self.components = {}
@@ -21,6 +22,10 @@ class SmartContractOrchestrator(BaseComponent):
         self.automation_config = config.get('automation', {})
         self.max_workers = self.automation_config.get('parallel_workers', 3)
         self._github_user_info = None  # Cache for GitHub user info
+        
+        # Initialize state tracker
+        self.state_tracker = StateTracker()
+        
         # Call parent constructor
         super().__init__(config, logger)
         
@@ -73,12 +78,26 @@ class SmartContractOrchestrator(BaseComponent):
             self.log_info(f"Using fallback Git config - Name: {fallback_info['user_name']}, Email: {fallback_info['user_email']}")
             return fallback_info
     
-    def process_all_projects(self) -> List[Dict[str, Any]]:
-        """Process all projects with parallel execution"""
-        projects = self.config.get('projects', [])
+    def process_all_projects(self, skip_completed: bool = True) -> List[Dict[str, Any]]:
+        """Process all projects with parallel execution, skipping completed ones"""
+        all_projects = self.config.get('projects', [])
+        
+        if not all_projects:
+            self.log_warning("No projects found in configuration")
+            return []
+        
+        # Filter out completed projects if requested
+        if skip_completed:
+            projects = self.state_tracker.get_incomplete_projects(all_projects)
+            completed_count = len(all_projects) - len(projects)
+            if completed_count > 0:
+                self.log_info(f"Skipping {completed_count} already completed projects")
+        else:
+            projects = all_projects
+            self.log_info("Processing all projects (including completed ones)")
         
         if not projects:
-            self.log_warning("No projects found in configuration")
+            self.log_info("All projects have been completed successfully!")
             return []
         
         self.log_info(f"Starting automation for {len(projects)} projects")
@@ -87,39 +106,75 @@ class SmartContractOrchestrator(BaseComponent):
         if self.max_workers > 1:
             return self._process_projects_parallel(projects)
         else:
+            return self._process_projects_sequential(projects)(f"Starting automation for {len(projects)} projects")
+        
+        # Process projects in parallel
+        if self.max_workers > 1:
+            return self._process_projects_parallel(projects)
+        else:
             return self._process_projects_sequential(projects)
     
     def _process_projects_parallel(self, projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process projects in parallel"""
+        """Process projects in parallel with state tracking"""
         results = []
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all projects
-            future_to_project = {
-                executor.submit(self._process_single_project, project): project 
-                for project in projects
-            }
+            future_to_project = {}
+            for project in projects:
+                # Get next available token for this project
+                token_index = self.components['github'].get_next_token_index(project['name'])
+                self.components['github'].set_manual_token_index(token_index)
+                
+                # Mark project as started
+                self.state_tracker.mark_project_started(project['name'], token_index)
+                
+                future = executor.submit(self._process_single_project, project)
+                future_to_project[future] = project
             
             # Collect results as they complete
             for future in as_completed(future_to_project):
                 project = future_to_project[future]
+                project_name = project['name']
+                
                 try:
                     result = future.result()
                     results.append(result)
-                    self.log_info(f"Completed project: {project['name']}")
+                    
+                    # Record completion in state tracker
+                    self.state_tracker.mark_project_completed(
+                        project_name,
+                        self.components['github'].current_token_index,
+                        success=(result.get('status') == 'completed'),
+                        duration=result.get('duration', 0),
+                        error=result.get('error'),
+                        pr_url=result.get('pr_url')
+                    )
+                    
+                    self.log_info(f"Completed project: {project_name}")
+                    
                 except Exception as e:
                     error_result = {
-                        'project_name': project['name'],
+                        'project_name': project_name,
                         'status': 'failed',
                         'error': str(e),
                         'timestamp': time.time()
                     }
                     results.append(error_result)
-                    self.log_error(f"Project {project['name']} failed: {str(e)}")
+                    
+                    # Record failure in state tracker
+                    self.state_tracker.mark_project_completed(
+                        project_name,
+                        self.components['github'].current_token_index,
+                        success=False,
+                        error=str(e)
+                    )
+                    
+                    self.log_error(f"Project {project_name} failed: {str(e)}")
                 
                 # Rotate GitHub token after each project
                 try:
-                    self.components['github'].rotate_token()
+                    self.components['github'].rotate_token(project_name)
                     # Clear cached user info so it gets refreshed with new token
                     self._github_user_info = None
                 except Exception as e:
@@ -128,34 +183,63 @@ class SmartContractOrchestrator(BaseComponent):
         return results
     
     def _process_projects_sequential(self, projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process projects sequentially"""
+        """Process projects sequentially with state tracking"""
         results = []
         
         for project in projects:
+            project_name = project['name']
+            
             try:
+                # Get next available token for this project
+                token_index = self.components['github'].get_next_token_index(project_name)
+                self.components['github'].set_manual_token_index(token_index)
+                
+                # Mark project as started
+                self.state_tracker.mark_project_started(project_name, token_index)
+                
                 result = self._process_single_project(project)
                 results.append(result)
-                self.log_info(f"Completed project: {project['name']}")
+                
+                # Record completion in state tracker
+                self.state_tracker.mark_project_completed(
+                    project_name,
+                    token_index,
+                    success=(result.get('status') == 'completed'),
+                    duration=result.get('duration', 0),
+                    error=result.get('error'),
+                    pr_url=result.get('pr_url')
+                )
+                
+                self.log_info(f"Completed project: {project_name}")
                 
                 # Rotate GitHub token after each project
-                self.components['github'].rotate_token()
+                self.components['github'].rotate_token(project_name)
                 # Clear cached user info so it gets refreshed with new token
                 self._github_user_info = None
                 
             except Exception as e:
                 error_result = {
-                    'project_name': project['name'],
+                    'project_name': project_name,
                     'status': 'failed',
                     'error': str(e),
                     'timestamp': time.time()
                 }
                 results.append(error_result)
-                self.log_error(f"Project {project['name']} failed: {str(e)}")
+                
+                # Record failure in state tracker
+                self.state_tracker.mark_project_completed(
+                    project_name,
+                    self.components['github'].current_token_index,
+                    success=False,
+                    error=str(e)
+                )
+                
+                self.log_error(f"Project {project_name} failed: {str(e)}")
         
         return results
     
-    def _process_single_project(self, project: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a single project through the complete workflow"""
+    def _process_single_project(self, project: Dict[str, Any], manual_token_index: Optional[int] = None) -> Dict[str, Any]:
+        """Process a single project through the complete workflow with state tracking"""
         project_name = project['name']
         start_time = time.time()
         
@@ -167,12 +251,27 @@ class SmartContractOrchestrator(BaseComponent):
         }
         
         try:
+            # Set up token for this project if manual index provided
+            if manual_token_index is not None:
+                self.components['github'].set_manual_token_index(manual_token_index)
+                token_index = manual_token_index
+            else:
+                # Get next available token
+                token_index = self.components['github'].get_next_token_index(project_name)
+            
+            # Mark project as started in state tracker (if not already marked)
+            if not self.state_tracker.is_project_completed(project_name):
+                self.state_tracker.mark_project_started(project_name, token_index)
+            
+            self.log_info(f"Processing project {project_name} with token index {token_index}")
+            
             # Step 1: Create GitHub repository
             self.log_info(f"Creating GitHub repository for {project_name}")
             repo_url = self.components['github'].execute('create_repo', project=project)
             result['steps']['github_repo'] = {
                 'status': 'success',
                 'repo_url': repo_url,
+                'token_index': token_index,
                 'timestamp': time.time()
             }
             
@@ -260,6 +359,7 @@ class SmartContractOrchestrator(BaseComponent):
             result['end_time'] = time.time()
             result['duration'] = result['end_time'] - start_time
             result['pr_url'] = pr_url
+            result['token_index'] = token_index
             
             self.components['tracker'].execute('record_result', result=result)
             
@@ -268,6 +368,7 @@ class SmartContractOrchestrator(BaseComponent):
             result['error'] = str(e)
             result['end_time'] = time.time()
             result['duration'] = result['end_time'] - start_time
+            result['token_index'] = self.components['github'].current_token_index
             
             # Cleanup on failure if configured
             if self.automation_config.get('cleanup_on_failure', True):
