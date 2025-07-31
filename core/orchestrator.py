@@ -20,6 +20,7 @@ class SmartContractOrchestrator(BaseComponent):
         self.results = []
         self.automation_config = config.get('automation', {})
         self.max_workers = self.automation_config.get('parallel_workers', 3)
+        self._github_user_info = None  # Cache for GitHub user info
         # Call parent constructor
         super().__init__(config, logger)
         
@@ -35,6 +36,42 @@ class SmartContractOrchestrator(BaseComponent):
         self.components['tracker'] = ResultTracker(self.config, self.logger)
         
         self.log_info("All components initialized successfully")
+    
+    def _get_github_user_info(self) -> Dict[str, str]:
+        """Get GitHub user information from current token"""
+        if self._github_user_info is not None:
+            return self._github_user_info
+        
+        try:
+            # Get GitHub user info through the GitHubManager component
+            user_info = self.components['github'].execute('get_user_info')
+            
+            # Extract user_name and user_email with fallbacks
+            user_name = user_info.get('name') or user_info.get('login', 'Smart Contract Bot')
+            user_email = user_info.get('email') or f"{user_info.get('login', 'bot')}@users.noreply.github.com"
+            
+            self._github_user_info = {
+                'user_name': user_name,
+                'user_email': user_email,
+                'username': user_info.get('login', 'unknown')
+            }
+            
+            self.log_info(f"Retrieved GitHub user info - Name: {user_name}, Email: {user_email}")
+            return self._github_user_info
+            
+        except Exception as e:
+            self.log_warning(f"Failed to retrieve GitHub user info: {str(e)}")
+            
+            # Fallback to configuration or hardcoded values
+            git_config = self.config.get('automation', {}).get('git_config', {})
+            fallback_info = {
+                'user_name': git_config.get('user_name', 'Smart Contract Bot'),
+                'user_email': git_config.get('user_email', 'bot@smartcontract.dev'),
+                'username': 'unknown'
+            }
+            
+            self.log_info(f"Using fallback Git config - Name: {fallback_info['user_name']}, Email: {fallback_info['user_email']}")
+            return fallback_info
     
     def process_all_projects(self) -> List[Dict[str, Any]]:
         """Process all projects with parallel execution"""
@@ -83,6 +120,8 @@ class SmartContractOrchestrator(BaseComponent):
                 # Rotate GitHub token after each project
                 try:
                     self.components['github'].rotate_token()
+                    # Clear cached user info so it gets refreshed with new token
+                    self._github_user_info = None
                 except Exception as e:
                     self.log_warning(f"Failed to rotate GitHub token: {str(e)}")
         
@@ -100,6 +139,8 @@ class SmartContractOrchestrator(BaseComponent):
                 
                 # Rotate GitHub token after each project
                 self.components['github'].rotate_token()
+                # Clear cached user info so it gets refreshed with new token
+                self._github_user_info = None
                 
             except Exception as e:
                 error_result = {
@@ -146,14 +187,18 @@ class SmartContractOrchestrator(BaseComponent):
                 'timestamp': time.time()
             }
             
-            # Step 3: Setup Git configuration
+            # Step 3: Setup Git configuration with dynamic user info
             self.log_info(f"Setting up Git configuration for {project_name}")
+            github_user_info = self._get_github_user_info()
+            
             self.components['git'].execute('setup_config',
                                          project_name=project_name,
-                                         user_name="Smart Contract Bot",
-                                         user_email="bot@smartcontract.dev")
+                                         user_name=github_user_info['user_name'],
+                                         user_email=github_user_info['user_email'])
             result['steps']['git_config'] = {
                 'status': 'success',
+                'user_name': github_user_info['user_name'],
+                'user_email': github_user_info['user_email'],
                 'timestamp': time.time()
             }
             
