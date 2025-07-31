@@ -223,10 +223,10 @@ class SmartContractOrchestrator(BaseComponent):
                 'timestamp': time.time()
             }
             
-            # Step 6: Compile and test contract (with error fixing loop)
-            self.log_info(f"Compiling and testing contract for {project_name}")
-            contract_result = self._compile_and_test_loop(project, workspace_path)
-            result['steps']['contract_testing'] = contract_result
+            # Step 6: Compile contract (with error fixing loop)
+            self.log_info(f"Compiling contract for {project_name}")
+            contract_result = self._compile_loop(project, workspace_path)
+            result['steps']['contract_compilation'] = contract_result
             
             # Step 7: Commit and push changes
             self.log_info(f"Committing and pushing changes for {project_name}")
@@ -277,72 +277,109 @@ class SmartContractOrchestrator(BaseComponent):
         
         return result
     
-    def _compile_and_test_loop(self, project: Dict[str, Any], workspace_path: str) -> Dict[str, Any]:
-        """Compile and test contract with error fixing loop"""
+    def _compile_loop(self, project: Dict[str, Any], workspace_path: str) -> Dict[str, Any]:
+        """Compile contract with error fixing loop - UPDATED: No testing, only compilation"""
         max_retries = self.automation_config.get('max_retries', 3)
         
         for attempt in range(max_retries):
             try:
-                # Compile contract
+                # Compile contract only
                 compile_result = self.components['contract'].execute('compile',
                                                                    workspace_path=workspace_path,
                                                                    contract_file="")
                 
                 if compile_result['success']:
-                    # Test contract
-                    test_result = self.components['contract'].execute('test',
-                                                                    workspace_path=workspace_path)
+                    # Compilation successful!
+                    self.log_info(f"Contract compilation successful on attempt {attempt + 1}")
                     
-                    if test_result['success']:
-                        return {
-                            'status': 'success',
-                            'attempts': attempt + 1,
-                            'compile_result': compile_result,
-                            'test_result': test_result,
-                            'timestamp': time.time()
-                        }
-                    else:
-                        error_message = test_result.get('errors', 'Test failed')
-                        self.log_warning(f"Test failed (attempt {attempt + 1}): {error_message}")
-                        
-                        if attempt < max_retries - 1:
-                            # Fix the error with Claude
-                            self.components['claude'].execute('fix_error',
-                                                            project=project,
-                                                            workspace_path=workspace_path,
-                                                            error_message=error_message)
+                    # Log warnings if any
+                    if compile_result.get('has_warnings', False):
+                        warnings = compile_result.get('warnings', [])
+                        self.log_info(f"Compilation succeeded with {len(warnings)} warnings")
+                        for warning in warnings:
+                            self.log_warning(f"Warning: {warning.get('message', 'Unknown warning')}")
+                    
+                    return {
+                        'status': 'success',
+                        'attempts': attempt + 1,
+                        'compile_result': compile_result,
+                        'has_warnings': compile_result.get('has_warnings', False),
+                        'warnings': compile_result.get('warnings', []),
+                        'timestamp': time.time()
+                    }
                 else:
-                    error_message = compile_result.get('errors', 'Compilation failed')
-                    self.log_warning(f"Compilation failed (attempt {attempt + 1}): {error_message}")
+                    # Compilation failed - extract error details for Claude
+                    error_details = compile_result.get('error_details', {})
+                    formatted_errors = error_details.get('formatted_for_claude', '') if error_details else ''
+                    
+                    # Use formatted errors if available, otherwise fallback to basic error message
+                    error_message = formatted_errors or compile_result.get('errors', 'Compilation failed')
+                    
+                    self.log_warning(f"Compilation failed (attempt {attempt + 1})")
+                    self.log_warning(f"Error details: {error_message}")
                     
                     if attempt < max_retries - 1:
-                        # Fix the error with Claude
+                        # Fix the error with Claude using detailed error information
+                        self.log_info(f"Sending error to Claude for fixing (attempt {attempt + 1})")
                         self.components['claude'].execute('fix_error',
                                                         project=project,
                                                         workspace_path=workspace_path,
-                                                        error_message=error_message)
+                                                        error_message=error_message,
+                                                        error_details=error_details)
+                    else:
+                        self.log_error(f"Max retries reached. Final compilation error: {error_message}")
                 
                 # Wait before retry
-                time.sleep(self.automation_config.get('retry_delay', 5))
+                retry_delay = self.automation_config.get('retry_delay', 5)
+                self.log_info(f"Waiting {retry_delay} seconds before retry...")
+                time.sleep(retry_delay)
                 
             except Exception as e:
+                self.log_error(f"Contract compilation attempt {attempt + 1} failed with exception: {str(e)}")
+                
                 if attempt == max_retries - 1:
                     return {
                         'status': 'failed',
                         'attempts': attempt + 1,
                         'error': str(e),
+                        'error_type': 'exception',
                         'timestamp': time.time()
                     }
                 
-                self.log_warning(f"Contract testing attempt {attempt + 1} failed: {str(e)}")
                 time.sleep(self.automation_config.get('retry_delay', 5))
         
         return {
             'status': 'failed',
             'attempts': max_retries,
             'error': 'Maximum retry attempts exceeded',
+            'error_type': 'max_retries_exceeded',
             'timestamp': time.time()
         }
+    
+    def test_contract_optional(self, project: Dict[str, Any], workspace_path: str) -> Dict[str, Any]:
+        """Optional contract testing - separate from compilation workflow"""
+        try:
+            self.log_info(f"Running optional contract tests for {project['name']}")
+            test_result = self.components['contract'].execute('test', workspace_path=workspace_path)
+            
+            if test_result['success']:
+                self.log_info("Contract tests passed successfully")
+            else:
+                self.log_warning(f"Contract tests failed: {test_result.get('errors', 'Unknown test failure')}")
+            
+            return {
+                'status': 'success' if test_result['success'] else 'failed',
+                'test_result': test_result,
+                'timestamp': time.time()
+            }
+            
+        except Exception as e:
+            self.log_error(f"Contract testing failed: {str(e)}")
+            return {
+                'status': 'failed',
+                'error': str(e),
+                'timestamp': time.time()
+            }
     
     def _cleanup_failed_project(self, project_name: str) -> None:
         """Clean up resources for a failed project"""
@@ -401,6 +438,7 @@ class SmartContractOrchestrator(BaseComponent):
         operations = {
             'process_all': self.process_all_projects,
             'process_single': self._process_single_project,
+            'test_contract': self.test_contract_optional,  # NEW: Optional testing
             'get_status': self.get_overall_status,
             'get_project_status': self.get_project_status,
             'pause': self.pause_automation,
