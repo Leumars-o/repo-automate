@@ -1,0 +1,52 @@
+2025-07-31 22:33:13,620 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: [Errno 2] No such file or directory: 'workspace/DeFiLendingProtocol'
+2025-07-31 22:33:13,621 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: [Errno 2] No such file or directory: 'workspace/DeFiLendingProtocol'
+2025-07-31 22:33:13,621 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: [Errno 2] No such file or directory: 'workspace/DeFiLendingProtocol'
+2025-08-03 15:32:47,918 - automation.main - ERROR - [SmartContractOrchestrator] Failed to cleanup project DeFiLendingProtocol: 'GitOperations' object has no attribute 'clone'
+2025-08-03 15:32:47,918 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: 'GitOperations' object has no attribute 'clone'
+2025-08-03 15:32:47,918 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: 'GitOperations' object has no attribute 'clone'
+2025-08-03 15:47:26,694 - automation.main - ERROR - Failed to reset state: '_load_token_state'
+2025-08-03 15:50:13,083 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: 'ClaudeInterface' object has no attribute 'generate_smart_contract'
+2025-08-03 15:50:13,083 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: 'ClaudeInterface' object has no attribute 'generate_smart_contract'
+2025-08-03 16:09:33,166 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: 'ClaudeInterface' object has no attribute 'generate_smart_contract'
+2025-08-03 16:09:33,167 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: 'ClaudeInterface' object has no attribute 'generate_smart_contract'
+2025-08-03 16:14:45,816 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol
+2025-08-03 16:14:45,818 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol
+2025-08-03 16:14:45,818 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol
+2025-08-03 16:46:23,603 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: Claude Code command timed out after all retries
+2025-08-03 16:46:23,604 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Claude Code command timed out after all retries
+2025-08-03 16:46:23,604 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Claude Code command timed out after all retries
+2025-08-04 09:28:08,642 - automation.main - ERROR - [GitOperations] Git operation 'commit' failed: Git operation failed: Failed to commit changes: Git operation failed: Failed to add changes: [Errno 2] No such file or directory: 'workspace/DeFiLendingProtocol'
+2025-08-04 09:28:08,646 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Git operation failed: Failed to commit changes: Git operation failed: Failed to add changes: [Errno 2] No such file or directory: 'workspace/DeFiLendingProtocol'
+2025-08-04 09:28:08,647 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Git operation failed: Failed to commit changes: Git operation failed: Failed to add changes: [Errno 2] No such file or directory: 'workspace/DeFiLendingProtocol'
+2025-08-04 19:21:57,550 - automation.main - ERROR - [SmartContractOrchestrator] Max retries reached. Final compilation error: Clarinet compilation errors:
+
+Error 1: expecting 2 arguments, got 6
+Location: contracts/DeFiLendingProtocol.clar at line 672, column 1
+Context:
+  error: expecting 2 arguments, got 6
+  --> contracts/De...
+2025-08-04 19:23:29,264 - automation.main - ERROR - [GitOperations] Workspace does not exist: workspace/DeFiLendingProtocol
+2025-08-04 19:23:29,264 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Workspace verification failed before git operations
+2025-08-04 19:23:29,265 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Workspace verification failed before git operations
+2025-08-04 20:44:38,949 - automation.main - ERROR - [GitOperations] Workspace does not exist: workspace/DeFiLendingProtocol
+2025-08-04 20:44:38,951 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Workspace verification failed before git operations
+2025-08-04 20:44:38,951 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Workspace verification failed before git operations
+2025-08-04 20:53:40,859 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol
+2025-08-04 20:53:40,861 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol
+2025-08-04 20:53:40,862 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol
+2025-08-05 02:03:50,142 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol. Current dir: /home/leumars/stx-automation/workspace/DeFiLendingProtocol
+2025-08-05 02:03:50,143 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol. Current dir: /home/leumars/stx-automation/workspace/DeFiLendingProtocol
+2025-08-05 02:03:50,143 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: Failed to generate smart contract: Workspace path does not exist: workspace/DeFiLendingProtocol. Current dir: /home/leumars/stx-automation/workspace/DeFiLendingProtocol
+2025-08-05 02:18:29,231 - automation.main - ERROR - [GitHubManager] GitHub operation 'create_pr' failed: GitHubManager.create_pull_request() got an unexpected keyword argument 'branch_name'
+2025-08-05 02:18:29,240 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project DeFiLendingProtocol failed: GitHubManager.create_pull_request() got an unexpected keyword argument 'branch_name'
+2025-08-05 02:18:29,240 - automation.main - ERROR - Single project automation failed: Project DeFiLendingProtocol failed: GitHubManager.create_pull_request() got an unexpected keyword argument 'branch_name'
+2025-08-06 08:45:41,043 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: Session message failed: Command failed with exit code 1 (exit code: 1)
+2025-08-06 08:45:41,062 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project SynStock failed: Failed to generate smart contract: Session message failed: Command failed with exit code 1 (exit code: 1)
+2025-08-06 08:45:41,062 - automation.main - ERROR - Single project automation failed: Project SynStock failed: Failed to generate smart contract: Session message failed: Command failed with exit code 1 (exit code: 1)
+2025-08-06 08:46:56,725 - automation.main - ERROR - [ClaudeInterface] Claude operation 'generate_contract' failed: Failed to generate smart contract: Session message failed: Command failed with exit code 1 (exit code: 1)
+2025-08-06 08:46:56,740 - automation.main - ERROR - [SmartContractOrchestrator] Orchestrator operation 'process_single' failed: Project SynStock failed: Failed to generate smart contract: Session message failed: Command failed with exit code 1 (exit code: 1)
+2025-08-06 08:46:56,741 - automation.main - ERROR - Single project automation failed: Project SynStock failed: Failed to generate smart contract: Session message failed: Command failed with exit code 1 (exit code: 1)
+2025-08-06 13:01:29,638 - automation.main - ERROR - [GitHubManager] Failed to retrieve GitHub user info: 401 {"message": "Bad credentials", "documentation_url": "https://docs.github.com/rest", "status": "401"}
+2025-08-06 13:01:31,446 - automation.main - ERROR - [GitHubManager] GitHub operation 'force_token' failed: 'NoneType' object is not callable
+2025-08-06 13:01:31,447 - automation.main - ERROR - Single project automation failed: 'NoneType' object is not callable
+2025-08-06 13:04:36,150 - automation.main - ERROR - [GitHubManager] Failed to retrieve GitHub user info: 401 {"message": "Bad credentials", "documentation_url": "https://docs.github.com/rest", "status": "401"}

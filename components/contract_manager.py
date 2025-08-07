@@ -18,17 +18,19 @@ class ContractManager(BaseComponent):
         self.testing_framework = self.contract_config.get('testing_framework', 'clarinet')
         super().__init__(config, logger)
         
+
     def _initialize(self) -> None:
         """Initialize contract manager"""
         self.validate_config(['smart_contracts'])
         self._verify_tools()
+
     
     def _verify_tools(self) -> None:
         """Verify required blockchain tools are installed"""
         tools_to_check = []
         
         if self.blockchain == 'stacks':
-            tools_to_check.extend(['clarinet', 'stx'])
+            tools_to_check = ['clarinet']
         elif self.blockchain == 'ethereum':
             tools_to_check.extend(['hardhat', 'truffle'])
         
@@ -42,66 +44,120 @@ class ContractManager(BaseComponent):
                     self.log_warning(f"Tool {tool} may not be properly installed")
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 self.log_warning(f"Tool {tool} not found or not responding")
+
     
     def initialize_project(self, workspace_path: str, project: Dict[str, Any]) -> None:
         """Initialize smart contract project environment"""
         try:
+            # Store original working directory
+            original_cwd = os.getcwd()
+            
             project_path = Path(workspace_path)
             os.chdir(project_path)
             
-            if self.blockchain == 'stacks':
-                self._initialize_stacks_project(project)
-            elif self.blockchain == 'ethereum':
-                self._initialize_ethereum_project(project)
-            else:
-                raise ContractError(f"Unsupported blockchain: {self.blockchain}")
-            
-            self.log_info(f"Initialized {self.blockchain} project in {workspace_path}")
+            try:
+                if self.blockchain == 'stacks':
+                    self._initialize_stacks_project(project)
+                elif self.blockchain == 'ethereum':
+                    self._initialize_ethereum_project(project)
+                else:
+                    raise ContractError(f"Unsupported blockchain: {self.blockchain}")
+                
+                self.log_info(f"Initialized {self.blockchain} project in {workspace_path}")
+            finally:
+                # ALWAYS restore the original working directory
+                os.chdir(original_cwd)
+                self.log_info(f"Restored working directory to: {original_cwd}")
             
         except Exception as e:
+            # Ensure we restore working directory even on error
+            try:
+                os.chdir(original_cwd)
+            except:
+                pass
             raise ContractError(f"Failed to initialize project: {str(e)}")
+        
     
     def _initialize_stacks_project(self, project: Dict[str, Any]) -> None:
-        """Initialize Stacks/Clarity project"""
+        """Initialize Stacks/Clarity project with proper clarinet structure"""
         try:
             project_name = project['name']
-            project_path = Path(project_name)
+            # Use a more descriptive name for the smart contract directory
+            contract_dir_name = f"{project_name}_contract"
             
-            # Check if project directory already exists
-            if not project_path.exists():
-                # Initialize new Clarinet project with automatic 'n' response to telemetry prompt
-                result = subprocess.run(['clarinet', 'new', project_name], 
+            # Check if contract directory already exists
+            contract_path = Path(contract_dir_name)
+            
+            if not contract_path.exists():
+                # Initialize new Clarinet project with descriptive name
+                result = subprocess.run(['clarinet', 'new', contract_dir_name], 
                                     input='n\n',  # Automatically respond 'n' to telemetry prompt
                                     capture_output=True, text=True, timeout=30)
                 
                 if result.returncode != 0:
                     raise ContractError(f"Failed to create new Clarinet project: {result.stderr}")
                 
-                self.log_info(f"Created new Clarinet project: {project_name}")
+                self.log_info(f"Created new Clarinet project: {contract_dir_name}")
             else:
-                self.log_info(f"Project directory {project_name} already exists, using existing structure")
+                self.log_info(f"Contract directory {contract_dir_name} already exists, using existing structure")
             
-            # Change to project directory for further setup
-            os.chdir(project_path)
+            # Store the contract directory path for later use
+            self.contract_directory = contract_dir_name
             
-            # Check and create necessary directories only if they don't exist
+            # Verify required directories exist within the contract directory
             required_dirs = ['contracts', 'tests', 'settings']
             for dir_name in required_dirs:
-                dir_path = Path(dir_name)
+                dir_path = contract_path / dir_name
                 if not dir_path.exists():
                     dir_path.mkdir(exist_ok=True)
-                    self.log_info(f"Created missing directory: {dir_name}")
+                    self.log_info(f"Created missing directory: {contract_dir_name}/{dir_name}")
                 else:
-                    self.log_info(f"Directory {dir_name} already exists")
+                    self.log_info(f"Directory {contract_dir_name}/{dir_name} already exists")
             
             # Check for Clarinet.toml and create/update if necessary
-            clarinet_config_path = Path('Clarinet.toml')
+            clarinet_config_path = contract_path / 'Clarinet.toml'
             if not clarinet_config_path.exists():
-                self._create_clarinet_config(project)
-                self.log_info("Created Clarinet.toml configuration file")
+                # Change to contract directory to create config
+                current_cwd = os.getcwd()
+                os.chdir(contract_path)
+                try:
+                    self._create_clarinet_config(project)
+                    self.log_info("Created Clarinet.toml configuration file")
+                finally:
+                    os.chdir(current_cwd)
+            
+            # Create the smart contract file using clarinet
+            current_cwd = os.getcwd()
+            os.chdir(contract_path)
+            try:
+                # Generate a clean contract name (remove spaces, special chars)
+                clean_contract_name = project_name.replace(' ', '').replace('_', '-')
+                
+                # Check if contract already exists
+                contract_file_path = Path('contracts') / f"{clean_contract_name}.clar"
+                if not contract_file_path.exists():
+                    # Create new contract using clarinet
+                    result = subprocess.run(['clarinet', 'contract', 'new', clean_contract_name],
+                                        capture_output=True, text=True, timeout=30)
+                    
+                    if result.returncode != 0:
+                        raise ContractError(f"Failed to create contract file: {result.stderr}")
+                    
+                    self.log_info(f"Created contract file: contracts/{clean_contract_name}.clar")
+                else:
+                    self.log_info(f"Contract file already exists: contracts/{clean_contract_name}.clar")
+                    
+            finally:
+                # Always restore the working directory
+                os.chdir(current_cwd)
                 
         except Exception as e:
             raise ContractError(f"Failed to initialize Stacks project: {str(e)}")
+        
+    
+    def get_contract_directory(self, project: Dict[str, Any]) -> str:
+        """Get the contract directory name for a project"""
+        return f"{project['name']}_contract"
 
         
     def _initialize_ethereum_project(self, project: Dict[str, Any]) -> None:
@@ -126,6 +182,7 @@ class ContractManager(BaseComponent):
             
         except Exception as e:
             raise ContractError(f"Failed to initialize Ethereum project: {str(e)}")
+
     
     def _create_clarinet_config(self, project: Dict[str, Any]) -> None:
         """Create Clarinet configuration file"""
@@ -149,25 +206,54 @@ class ContractManager(BaseComponent):
             f.write(f'epoch = "{config["epoch"]}"\n')
             f.write(f'clarity_version = "{config["clarity_version"]}"\n')
     
+
     def compile_contract(self, workspace_path: str, contract_file: str = "") -> Dict[str, Any]:
-        """Compile smart contract - UPDATED: Only compilation, no testing"""
+        """Compile smart contract in the correct directory structure"""
         try:
+            # Store original working directory
             original_cwd = os.getcwd()
+            
+            # Navigate to the workspace first
             os.chdir(workspace_path)
             
-            if self.blockchain == 'stacks':
-                result = self._compile_stacks_contract(contract_file)
-            elif self.blockchain == 'ethereum':
-                result = self._compile_ethereum_contract(contract_file)
-            else:
-                raise ContractError(f"Unsupported blockchain: {self.blockchain}")
-            
-            return result
+            try:
+                # Then navigate to the contract directory
+                contract_dir = getattr(self, 'contract_directory', None)
+                if contract_dir and Path(contract_dir).exists():
+                    os.chdir(contract_dir)
+                    self.log_info(f"Changed to contract directory: {contract_dir}")
+                else:
+                    # Fallback: look for any clarinet project directory
+                    clarinet_dirs = [d for d in Path('.').iterdir() 
+                                if d.is_dir() and (d / 'Clarinet.toml').exists()]
+                    if clarinet_dirs:
+                        contract_dir = clarinet_dirs[0].name
+                        os.chdir(contract_dir)
+                        self.log_info(f"Found and changed to contract directory: {contract_dir}")
+                    else:
+                        raise ContractError("No Clarinet project directory found")
+                
+                if self.blockchain == 'stacks':
+                    result = self._compile_stacks_contract(contract_file)
+                elif self.blockchain == 'ethereum':
+                    result = self._compile_ethereum_contract(contract_file)
+                else:
+                    raise ContractError(f"Unsupported blockchain: {self.blockchain}")
+                
+                return result
+            finally:
+                # ALWAYS restore the original working directory
+                os.chdir(original_cwd)
+                self.log_info(f"Restored working directory to: {original_cwd}")
             
         except Exception as e:
+            # Ensure we restore working directory even on error
+            try:
+                os.chdir(original_cwd)
+            except:
+                pass
             raise ContractError(f"Failed to compile contract: {str(e)}")
-        finally:
-            os.chdir(original_cwd)
+
     
     def _compile_stacks_contract(self, contract_file: str) -> Dict[str, Any]:
         """Compile Stacks/Clarity contract with improved error parsing"""
@@ -220,6 +306,7 @@ class ContractManager(BaseComponent):
                     'message': 'Clarinet not installed'
                 }
             }
+
     
     def _parse_clarinet_output(self, stdout: str, stderr: str, returncode: int) -> Dict[str, Any]:
         """Parse clarinet check output to determine success/failure and extract error details"""
@@ -267,6 +354,7 @@ class ContractManager(BaseComponent):
             'compilation_status': 'success' if success else 'failed'
         }
     
+
     def _extract_clarinet_errors(self, output: str) -> Dict[str, Any]:
         """Extract detailed error information for Claude to fix"""
         lines = output.split('\n')
@@ -312,6 +400,7 @@ class ContractManager(BaseComponent):
             'errors': errors,
             'formatted_for_claude': self._format_errors_for_claude(errors)
         }
+
     
     def _extract_clarinet_warnings(self, output: str) -> List[Dict[str, Any]]:
         """Extract warning information"""
@@ -343,7 +432,8 @@ class ContractManager(BaseComponent):
             warnings.append(current_warning)
         
         return warnings
-    
+
+
     def _format_errors_for_claude(self, errors: List[Dict[str, Any]]) -> str:
         """Format errors in a way that's helpful for Claude to understand and fix"""
         if not errors:
@@ -366,6 +456,7 @@ class ContractManager(BaseComponent):
             formatted += "\n"
         
         return formatted.strip()
+
     
     def _compile_ethereum_contract(self, contract_file: str) -> Dict[str, Any]:
         """Compile Ethereum contract"""
@@ -382,26 +473,55 @@ class ContractManager(BaseComponent):
             
         except subprocess.TimeoutExpired:
             raise ContractError("Contract compilation timed out")
+
     
     def test_contract(self, workspace_path: str) -> Dict[str, Any]:
-        """Run contract tests - OPTIONAL: Now separate from compilation"""
+        """Run contract tests in the correct directory structure"""
         try:
+            # Store original working directory
             original_cwd = os.getcwd()
+            
+            # Navigate to the workspace first
             os.chdir(workspace_path)
             
-            if self.blockchain == 'stacks':
-                result = self._test_stacks_contract()
-            elif self.blockchain == 'ethereum':
-                result = self._test_ethereum_contract()
-            else:
-                raise ContractError(f"Unsupported blockchain: {self.blockchain}")
-            
-            return result
+            try:
+                # Then navigate to the contract directory
+                contract_dir = getattr(self, 'contract_directory', None)
+                if contract_dir and Path(contract_dir).exists():
+                    os.chdir(contract_dir)
+                    self.log_info(f"Changed to contract directory for testing: {contract_dir}")
+                else:
+                    # Fallback: look for any clarinet project directory
+                    clarinet_dirs = [d for d in Path('.').iterdir() 
+                                if d.is_dir() and (d / 'Clarinet.toml').exists()]
+                    if clarinet_dirs:
+                        contract_dir = clarinet_dirs[0].name
+                        os.chdir(contract_dir)
+                        self.log_info(f"Found and changed to contract directory for testing: {contract_dir}")
+                    else:
+                        raise ContractError("No Clarinet project directory found for testing")
+                
+                if self.blockchain == 'stacks':
+                    result = self._test_stacks_contract()
+                elif self.blockchain == 'ethereum':
+                    result = self._test_ethereum_contract()
+                else:
+                    raise ContractError(f"Unsupported blockchain: {self.blockchain}")
+                
+                return result
+            finally:
+                # ALWAYS restore the original working directory
+                os.chdir(original_cwd)
+                self.log_info(f"Restored working directory to: {original_cwd}")
             
         except Exception as e:
+            # Ensure we restore working directory even on error
+            try:
+                os.chdir(original_cwd)
+            except:
+                pass
             raise ContractError(f"Failed to test contract: {str(e)}")
-        finally:
-            os.chdir(original_cwd)
+
     
     def _test_stacks_contract(self) -> Dict[str, Any]:
         """Test Stacks contract"""

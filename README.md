@@ -408,3 +408,307 @@ python debug/debug_runner.py full
 
 # With verbose output and report generation
 python debug/debug_runner.py full --verbose --save-report
+
+
+
+# State Tracking and Token Management - Usage Guide
+
+## 🎯 Overview
+
+The automation system now includes comprehensive state tracking that persists across sessions:
+
+- **Token rotation and usage tracking**
+- **Project completion tracking** 
+- **Blacklist management for failed tokens**
+- **Manual token selection**
+- **Resume interrupted executions**
+
+## 📁 State Files
+
+All state is stored in JSON files in the `secrets/` directory:
+
+```
+secrets/
+├── tokens.yaml           # Your GitHub tokens
+├── token_state.json      # Token usage tracking
+├── project_state.json    # Project completion tracking
+└── execution_log.json    # Detailed execution logs
+```
+
+## 🔧 New CLI Commands
+
+### **Single Project with Token Selection**
+```bash
+# Auto-select least used token
+python main.py --action single --project "Escrow-chain"
+
+# Use specific token (index 2)
+python main.py --action single --project "Escrow-chain" --token-index 2
+
+# With testing enabled
+python main.py --action single --project "Escrow-chain" --with-tests
+
+# Combine token selection + testing
+python main.py --action single --project "Escrow-chain" --token-index 1 --with-tests
+```
+
+### **Batch Processing with Smart Resume**
+```bash
+# Process all incomplete projects (default)
+python main.py --action run
+
+# Force reprocess completed projects
+python main.py --action run --force
+
+# Process all projects (including completed)
+python main.py --action run --skip-completed=false
+```
+
+### **State Management**
+```bash
+# View state summary
+python main.py --action state
+
+# Reset token usage tracking
+python main.py --action reset-state --reset-tokens
+
+# Reset project completion tracking  
+python main.py --action reset-state --reset-projects
+
+# Reset everything
+python main.py --action reset-state --reset-tokens --reset-projects
+```
+
+### **Testing Only**
+```bash
+# Test existing project
+python main.py --action test --project "Escrow-chain"
+```
+
+## 🔑 Token Management Features
+
+### **Automatic Token Selection**
+The system automatically selects the least-used, non-blacklisted token:
+
+```python
+# Token usage is tracked:
+Token 0: Used 5 times, last used 2 hours ago
+Token 1: Used 2 times, last used 1 hour ago  ← Will be selected
+Token 2: Used 8 times, blacklisted (rate limited)
+```
+
+### **Token Blacklisting**
+Tokens are automatically blacklisted when they encounter:
+- Rate limiting errors
+- Authentication failures (401, 403)
+- Other persistent failures
+
+### **Manual Token Override**
+```bash
+# Force use of specific token
+python main.py --action single --project "Project1" --token-index 3
+```
+
+## 📋 Project Completion Tracking
+
+### **Automatic Skip of Completed Projects**
+```bash
+# Only processes incomplete projects
+python main.py --action run
+```
+
+Output:
+```
+⏭️  Skip mode: Will skip completed projects
+Skipping 3 already completed projects
+Starting automation for 2 projects
+```
+
+### **Completion Status Check**
+```bash
+python main.py --action single --project "AlreadyDone"
+```
+
+Output:
+```
+⚠️  Project 'AlreadyDone' has already been completed successfully!
+   Use --force flag to reprocess completed projects (coming soon)
+```
+
+## 🔄 Smart Resume After Interruption
+
+If you interrupt batch processing (Ctrl+C), the system remembers:
+- Which projects were completed
+- Which tokens were used
+- Any blacklisted tokens
+
+When you restart:
+```bash
+python main.py --action run
+```
+
+It will:
+1. ✅ Skip completed projects
+2. 🔄 Resume with next available token
+3. 📋 Continue from where it left off
+
+## 📊 State Summary Example
+
+```bash
+python main.py --action state
+```
+
+Output:
+```
+============================================================
+STATE TRACKING SUMMARY
+============================================================
+
+🔑 Token State:
+  Total Tokens: 5
+  Current Index: 2
+  Blacklisted: 1
+  Rotations: 12
+  Available: 4
+  Available Indices: [0, 1, 2, 4]
+
+📋 Project State:
+  Completed: 8
+  Failed: 2
+  In Progress: 0
+  Total Executions: 10
+
+⏳ Incomplete Projects (3):
+  - DeFi-lending
+  - NFT-marketplace  
+  - DAO-governance
+============================================================
+```
+
+## 🛠️ Advanced Usage Scenarios
+
+### **Large Token Pool Management**
+If you have 20+ tokens and run batch processing:
+
+```bash
+python main.py --action run
+```
+
+The system will:
+1. Distribute projects evenly across all tokens
+2. Automatically blacklist failing tokens
+3. Continue with remaining tokens
+4. Persist state if interrupted
+
+### **Selective Reprocessing**
+```bash
+# Reset specific failed projects
+python main.py --action reset-state --reset-projects
+
+# Then reprocess only those projects
+python main.py --action run
+```
+
+### **Token Recovery**
+If tokens get blacklisted incorrectly:
+
+```bash
+# Reset token blacklist
+python main.py --action reset-state --reset-tokens
+
+# Or manually edit secrets/token_state.json
+```
+
+## 🚨 Error Handling
+
+### **Token Exhaustion**
+If all tokens are blacklisted:
+```
+Warning: All tokens are blacklisted, resetting blacklist...
+```
+The system automatically resets and continues.
+
+### **Stale Progress Cleanup**
+The system automatically cleans up stale "in progress" entries from crashed executions (older than 24 hours).
+
+## 📝 JSON State File Examples
+
+### **token_state.json**
+```json
+{
+  "current_token_index": 2,
+  "token_usage": {
+    "a1b2c3d4": {
+      "index": 0,
+      "usage_count": 5,
+      "last_used": "2025-01-15T10:30:00",
+      "projects_completed": ["Project1", "Project2"],
+      "rate_limited": false
+    }
+  },
+  "tokens_blacklisted": ["x9y8z7w6"],
+  "rotation_count": 15
+}
+```
+
+### **project_state.json**
+```json
+{
+  "completed_projects": {
+    "Escrow-chain": {
+      "completion_time": "2025-01-15T10:30:00", 
+      "token_index": 1,
+      "duration": 45.2,
+      "pr_url": "https://github.com/user/escrow-chain/pull/1",
+      "status": "success"
+    }
+  },
+  "failed_projects": {
+    "BadProject": {
+      "failure_count": 3,
+      "last_failure": "2025-01-15T09:15:00",
+      "last_error": "Compilation failed"
+    }
+  }
+}
+```
+
+## 🎉 Benefits
+
+1. **Session Persistence**: Never lose progress when interrupted
+2. **Smart Token Usage**: Optimal distribution across token pool
+3. **Failure Recovery**: Automatic blacklisting and recovery
+4. **Manual Control**: Override automatic behavior when needed
+5. **Comprehensive Logging**: Full audit trail of all operations
+
+This implementation ensures robust, scalable automation even with large token pools and extended execution times!
+
+--config/-c          # Configuration file path
+--action/-a          # Action to perform (run, single, test, state, etc.)
+--project/-p         # Project name for single operations
+--token-index/-t     # Manual token selection (0-based)
+--with-tests         # Enable testing for single projects
+--skip-completed     # Skip completed projects (default: True)
+--force              # Force reprocess completed projects
+--reset-tokens       # Reset token state tracking
+--reset-projects     # Reset project completion tracking
+--verbose/-v         # Enable verbose logging
+
+
+# Single project with auto token selection
+python main.py --action single --project "Escrow-chain"
+
+# Single project with manual token
+python main.py --action single --project "Escrow-chain" --token-index 2
+
+# Batch processing (skip completed)
+python main.py --action run
+
+# Force reprocess all projects
+python main.py --action run --force
+
+# View state tracking
+python main.py --action state
+
+# Reset tracking data
+python main.py --action reset-state --reset-tokens --reset-projects

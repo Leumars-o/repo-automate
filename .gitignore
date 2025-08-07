@@ -3,3 +3,18 @@ secrets/
 
 # venv
 claude-env/
+
+# test_folder
+playground/
+
+# project_folder_outputs
+workspace/
+
+# automation_logs and result_summary
+results/
+logs/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

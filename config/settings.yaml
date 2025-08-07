@@ -18,7 +18,7 @@ smart_contracts:
 
 automation:
   max_retries: 3
-  retry_delay: 5
+  retry_delay: 30
   timeout: 300
   parallel_workers: 3
   log_level: INFO
@@ -31,6 +31,9 @@ results:
 
 claude:
   model: claude-sonnet-4
-  timeout: 120
+  timeout: 240
   max_tokens: 4000
   temperature: 0.1
+
+summary_tracker:
+  output_file: 'results/project_summary.json'

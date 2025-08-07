@@ -39,14 +39,16 @@ class ClaudeSession:
         return """You are an expert smart contract developer specializing in Clarity for the Stacks blockchain. 
 
             Key responsibilities:
-            - Write efficient, error free and well-documented smart contracts
+            - Write secure, efficient, and well-documented smart contracts
             - Fix compilation errors with minimal changes that preserve functionality
+            - Follow Clarity best practices and security patterns
             - Maintain code consistency and readability
 
             When fixing errors:
             1. Read and understand the current contract code
             2. Identify the specific issue causing the error
             3. Make targeted fixes that address the root cause
+            4. Verify the fix doesn't break existing functionality
 
             You have persistent context across multiple interactions in this session."""
     
@@ -147,7 +149,7 @@ class ClaudeInterface(BaseComponent):
         try:
             options = ClaudeCodeOptions(
                 max_turns=max_turns,
-                system_prompt="You are an expert technical writer and smart contract developer. Create comprehensive documentation. Work efficiently and complete tasks within the turn limit.",
+                system_prompt="You are an expert technical writer and smart contract developer. Create comprehensive, professional documentation. Work efficiently and complete tasks within the turn limit.",
                 cwd=Path(workspace_path),
                 allowed_tools=["Read", "Write", "Bash"],
                 permission_mode="acceptEdits"
@@ -173,31 +175,10 @@ class ClaudeInterface(BaseComponent):
         """Generate smart contract using Claude Code SDK with session"""
         try:
             project_name = project['name']
-            
-            # Convert to Path object and verify it exists
-            project_workspace = Path(workspace_path)
-            
-            # For debugging - log what we're looking for
-            self.log_info(f"Looking for workspace at: {project_workspace}")
-            self.log_info(f"Workspace exists: {project_workspace.exists()}")
+            project_workspace = Path(workspace_path).resolve()
             
             if not project_workspace.exists():
-                # Try to find the workspace in current directory
-                current_dir = Path.cwd()
-                alternative_path = current_dir / workspace_path
-                self.log_info(f"Trying alternative path: {alternative_path}")
-                
-                if alternative_path.exists():
-                    project_workspace = alternative_path
-                    self.log_info(f"Found workspace at alternative path: {project_workspace}")
-                else:
-                    # List what's actually in the workspace directory for debugging
-                    workspace_dir = current_dir / "workspace"
-                    if workspace_dir.exists():
-                        contents = list(workspace_dir.iterdir())
-                        self.log_info(f"Contents of workspace directory: {[str(p.name) for p in contents]}")
-                    
-                    raise ClaudeError(f"Workspace path does not exist: {workspace_path}. Current dir: {current_dir}")
+                raise ClaudeError(f"Workspace path does not exist: {workspace_path}")
             
             # Find the contract directory
             contract_dir_name = f"{project_name}_contract"
@@ -333,77 +314,77 @@ class ClaudeInterface(BaseComponent):
         """Create a basic README as fallback"""
         readme_content = f"""# {project['name']}
 
-## Overview
-{project['description']}
+        ## Overview
+        {project['description']}
 
-## Technical Specifications
-- **Blockchain**: {blockchain}
-- **Language**: {language}
-- **Framework**: Clarinet
+        ## Technical Specifications
+        - **Blockchain**: {blockchain}
+        - **Language**: {language}
+        - **Framework**: Clarinet
 
-## Prerequisites
-- [Clarinet](https://github.com/hirosystems/clarinet) - Clarity development environment
-- [Stacks CLI](https://docs.stacks.co/docs/stacks-cli/) - For deployment
+        ## Prerequisites
+        - [Clarinet](https://github.com/hirosystems/clarinet) - Clarity development environment
+        - [Stacks CLI](https://docs.stacks.co/docs/stacks-cli/) - For deployment
 
-## Installation & Setup
+        ## Installation & Setup
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd {project['name']}
-```
+        1. Clone the repository:
+        ```bash
+        git clone <repository-url>
+        cd {project['name']}
+        ```
 
-2. Navigate to the contract directory:
-```bash
-cd {project['name']}_contract
-```
+        2. Navigate to the contract directory:
+        ```bash
+        cd {project['name']}_contract
+        ```
 
-3. Check the contract:
-```bash
-clarinet check
-```
+        3. Check the contract:
+        ```bash
+        clarinet check
+        ```
 
-## Project Structure
-```
-{project['name']}_contract/
-├── Clarinet.toml          # Project configuration
-├── contracts/             # Smart contract files
-├── tests/                 # Test files
-└── settings/              # Network settings
-```
+        ## Project Structure
+        ```
+        {project['name']}_contract/
+        ├── Clarinet.toml          # Project configuration
+        ├── contracts/             # Smart contract files
+        ├── tests/                 # Test files
+        └── settings/              # Network settings
+        ```
 
-## Usage
+        ## Usage
 
-### Testing
-Run the test suite:
-```bash
-clarinet test
-```
+        ### Testing
+        Run the test suite:
+        ```bash
+        clarinet test
+        ```
 
-### Deployment
-Deploy to testnet:
-```bash
-clarinet deploy --testnet
-```
+        ### Deployment
+        Deploy to testnet:
+        ```bash
+        clarinet deploy --testnet
+        ```
 
-## Contract Functions
-See the contract file in `contracts/` directory for detailed function documentation.
+        ## Contract Functions
+        See the contract file in `contracts/` directory for detailed function documentation.
 
-## Security Considerations
-- All functions include proper input validation
-- Access controls are implemented where appropriate
-- Contract follows Clarity security best practices
+        ## Security Considerations
+        - All functions include proper input validation
+        - Access controls are implemented where appropriate
+        - Contract follows Clarity security best practices
 
-## Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+        ## Contributing
+        1. Fork the repository
+        2. Create a feature branch
+        3. Make your changes
+        4. Add tests
+        5. Submit a pull request
 
-## License
-MIT License
-"""
+        ## License
+        MIT License
+        """
         
         readme_path = workspace / "README.md"
         with open(readme_path, 'w') as f:
@@ -416,30 +397,30 @@ MIT License
         """Build a more efficient prompt that focuses on completing the task quickly"""
         return f"""Create a comprehensive README.md file for the {project['name']} smart contract project.
 
-IMPORTANT: Work efficiently to complete this task within the turn limit.
+            IMPORTANT: Work efficiently to complete this task within the turn limit.
 
-Project: {project['name']}
-Description: {project['description']}
-Blockchain: {blockchain}
-Language: {language}
+            Project: {project['name']}
+            Description: {project['description']}
+            Blockchain: {blockchain}
+            Language: {language}
 
-Steps:
-1. Examine the contract directory structure quickly
-2. Read the main contract file to understand key functions
-3. Replace the existing README.md with comprehensive documentation
+            Steps:
+            1. Examine the contract directory structure quickly
+            2. Read the main contract file to understand key functions
+            3. Replace the existing README.md with comprehensive documentation
 
-Required sections for README.md:
-- Project title and description
-- Features (based on contract analysis)
-- Technical specifications
-- Installation instructions
-- Usage examples
-- Contract functions documentation
-- Deployment guide
-- Security notes
+            Required sections for README.md:
+            - Project title and description
+            - Features (based on contract analysis)
+            - Technical specifications
+            - Installation instructions
+            - Usage examples
+            - Contract functions documentation
+            - Deployment guide
+            - Security notes
 
-Focus on creating complete, accurate content rather than extensive exploration. Save the final README.md in the root directory.
-"""
+            Focus on creating complete, accurate content rather than extensive exploration. Save the final README.md in the root directory.
+            """
 
     def _build_initial_error_fix_prompt(self, project: Dict[str, Any], error_message: str, 
                                        error_details: Dict[str, Any]) -> str:
@@ -448,18 +429,19 @@ Focus on creating complete, accurate content rather than extensive exploration. 
         
         return f"""I need you to fix compilation errors in the smart contract for project: "{project['name']}"
 
-This is the FIRST attempt at fixing these errors.
+            This is the FIRST attempt at fixing these errors.
 
-The contract failed to compile with the following errors:
-{formatted_errors}
+            The contract failed to compile with the following errors:
+            {formatted_errors}
 
-Please:
-1. Read the current contract file in the contracts/ directory
-2. Analyze the compilation errors 
-3. Fix the specific issues mentioned in the error messages
-5. Maintain the original functionality while fixing the errors
+            Please:
+            1. Read the current contract file in the contracts/ directory
+            2. Analyze the compilation errors carefully  
+            3. Fix the specific issues mentioned in the error messages
+            4. Ensure the corrected code follows Clarity best practices
+            5. Maintain the original functionality while fixing the errors
 
-Important: This is a persistent session, so if there are still errors after this fix, I'll send you the new error messages and you can make additional corrections based on the full context of our conversation."""
+            Important: This is a persistent session, so if there are still errors after this fix, I'll send you the new error messages and you can make additional corrections based on the full context of our conversation."""
 
     def _build_followup_error_fix_prompt(self, project: Dict[str, Any], error_message: str, 
                                         error_details: Dict[str, Any], attempt: int) -> str:
@@ -468,17 +450,19 @@ Important: This is a persistent session, so if there are still errors after this
         
         return f"""The contract still has compilation errors after our previous fix attempt.
 
-This is attempt #{attempt} at fixing the errors.
+            This is attempt #{attempt} at fixing the errors.
 
-NEW ERROR OUTPUT:
-{formatted_errors}
+            NEW ERROR OUTPUT:
+            {formatted_errors}
 
-Based on our previous conversation and the changes you already made, please:
-1. Review what was changed in the previous attempt
-2. Analyze these new/remaining errors
-3. Make additional targeted fixes
+            Based on our previous conversation and the changes you already made, please:
+            1. Review what was changed in the previous attempt
+            2. Analyze these new/remaining errors
+            3. Make additional targeted fixes
+            4. Explain what additional changes you're making and why
+            5. Consider if the previous fix introduced any new issues
 
-Remember: You have the full context of our previous fixes, so build upon what was already done."""
+            Remember: You have the full context of our previous fixes, so build upon what was already done."""
 
     # Keep existing helper methods
     def _build_contract_prompt(self, project: Dict[str, Any]) -> str:
@@ -487,22 +471,22 @@ Remember: You have the full context of our previous fixes, so build upon what wa
         
         prompt = f"""I need you to create a simple smart contract for a project called "{project['name']}".
 
-Project Description: {project['description']}
+            Project Description: {project['description']}
 
-Requirements:
-- Blockchain: {contract_config.get('blockchain', 'stacks')}
-- Language: {contract_config.get('language', 'clarity')}
-- Contract Type: {project.get('contract_type', 'basic')}
+            Requirements:
+            - Blockchain: {contract_config.get('blockchain', 'stacks')}
+            - Language: {contract_config.get('language', 'clarity')}
+            - Contract Type: {project.get('contract_type', 'basic')}
 
-Please follow these steps:
+            Please follow these steps:
 
-1. First, examine the current directory structure to understand the Clarinet project layout
-2. Look at the existing contract file in the contracts/ directory
-3. Replace the placeholder content with a complete, functional smart contract that implements the project requirements
-4. The contract should be saved in the contracts/ directory with a .clar extension
+            1. First, examine the current directory structure to understand the Clarinet project layout
+            2. Look at the existing contract file in the contracts/ directory
+            3. Replace the placeholder content with a complete, functional smart contract that implements the project requirements
+            4. The contract should be saved in the contracts/ directory with a .clar extension
 
-Note: This is the start of a persistent session. If there are compilation errors, I'll send them to you and you can make corrections while maintaining the context of what was already built.
-"""
+            Note: This is the start of a persistent session. If there are compilation errors, I'll send them to you and you can make corrections while maintaining the context of what was already built.
+            """
         
         return prompt.strip()
     
@@ -560,7 +544,7 @@ Note: This is the start of a persistent session. If there are compilation errors
                     'is_active': session.is_active,
                     'conversation_length': len(session.conversation_history)
                 }
-        
+                
         return project_sessions
     
     def execute(self, operation: str, **kwargs) -> Any:
