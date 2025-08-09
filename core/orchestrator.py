@@ -1,4 +1,4 @@
-# core/orchestrator.py - Updated with Summary Tracker
+# core/orchestrator.py
 from typing import Dict, Any, List, Optional
 import time
 import random
@@ -12,7 +12,7 @@ from components.git_operations import GitOperations
 from components.claude_interface import ClaudeInterface
 from components.contract_manager import ContractManager
 from components.result_tracker import ResultTracker
-from components.summary_tracker import SummaryTracker  # NEW
+from components.summary_tracker import SummaryTracker
 from utils.state_tracker import StateTracker
 
 class SmartContractOrchestrator(BaseComponent):
@@ -94,7 +94,7 @@ class SmartContractOrchestrator(BaseComponent):
         self.components['claude'] = ClaudeInterface(self.config, self.logger)
         self.components['contract'] = ContractManager(self.config, self.logger)
         self.components['tracker'] = ResultTracker(self.config, self.logger)
-        self.components['summary'] = SummaryTracker(self.config, self.logger)  # NEW
+        self.components['summary'] = SummaryTracker(self.config, self.logger)
         
         self.log_info("All components initialized successfully")
     
@@ -161,28 +161,34 @@ class SmartContractOrchestrator(BaseComponent):
         
         self.log_info(f"Starting automation for {len(projects)} projects")
         
-        # Process projects in parallel
-        if self.max_workers > 1:
-            return self._process_projects_parallel(projects)
-        else:
-            return self._process_projects_sequential(projects)
+        # CRITICAL FIX: Enable batch mode before processing
+        self.components['github'].execute('set_batch_mode', batch_mode=True)
+        self.log_info("Enabled batch mode for token rotation")
+        
+        try:
+            # Process projects in parallel or sequential
+            if self.max_workers > 1:
+                return self._process_projects_parallel(projects)
+            else:
+                return self._process_projects_sequential(projects)
+        finally:
+            # Always disable batch mode after processing
+            self.components['github'].execute('set_batch_mode', batch_mode=False)
+            self.log_info("Disabled batch mode after processing")
 
     
     def _process_projects_parallel(self, projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process projects in parallel with state tracking"""
+        """Process projects in parallel with proper token rotation"""
         results = []
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all projects
             future_to_project = {}
             for project in projects:
-                # Get next available token for this project
-                token_index = self.components['github'].get_next_token_index(project['name'])
-                self.components['github'].set_manual_token_index(token_index)
+                # CRITICAL FIX: Don't manually set token index - let batch mode handle it
+                # The token will be selected automatically in _process_single_project
                 
-                # Mark project as started
-                self.state_tracker.mark_project_started(project['name'], token_index)
-                
+                # Mark project as started (token will be assigned in the worker)
                 future = executor.submit(self._process_single_project, project)
                 future_to_project[future] = project
             
@@ -196,66 +202,57 @@ class SmartContractOrchestrator(BaseComponent):
                     results.append(result)
                     
                     # Record completion in state tracker
+                    token_index = result.get('token_index', 0)
                     self.state_tracker.mark_project_completed(
                         project_name,
-                        self.components['github'].current_token_index,
+                        token_index,
                         success=(result.get('status') == 'completed'),
                         duration=result.get('duration', 0),
                         error=result.get('error'),
                         pr_url=result.get('pr_url')
                     )
                     
-                    self.log_info(f"Completed project: {project_name}")
+                    self.log_info(f"Completed project: {project_name} using token {token_index}")
                     
                 except Exception as e:
                     error_result = {
                         'project_name': project_name,
                         'status': 'failed',
                         'error': str(e),
-                        'timestamp': time.time()
+                        'timestamp': time.time(),
+                        'token_index': 0  # Default if no token was selected
                     }
                     results.append(error_result)
                     
                     # Record failure in state tracker
                     self.state_tracker.mark_project_completed(
                         project_name,
-                        self.components['github'].current_token_index,
+                        0,  # Default token index
                         success=False,
                         error=str(e)
                     )
                     
                     self.log_error(f"Project {project_name} failed: {str(e)}")
-                
-                # Rotate GitHub token after each project
-                try:
-                    self.components['github'].rotate_token(project_name)
-                    # Clear cached user info so it gets refreshed with new token
-                    self._github_user_info = None
-                except Exception as e:
-                    self.log_warning(f"Failed to rotate GitHub token: {str(e)}")
         
         return results
     
     
     def _process_projects_sequential(self, projects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process projects sequentially with state tracking"""
+        """Process projects sequentially with proper token rotation"""
         results = []
         
         for project in projects:
             project_name = project['name']
             
             try:
-                # Get next available token for this project
-                token_index = self.components['github'].get_next_token_index(project_name)
-                self.components['github'].set_manual_token_index(token_index)
-                
-                # Mark project as started
-                self.state_tracker.mark_project_started(project_name, token_index)
+                # CRITICAL FIX: Don't manually set token index - let batch mode handle it
+                # The token will be selected automatically in _process_single_project
                 
                 result = self._process_single_project(project)
                 results.append(result)
                 
                 # Record completion in state tracker
+                token_index = result.get('token_index', 0)
                 self.state_tracker.mark_project_completed(
                     project_name,
                     token_index,
@@ -265,10 +262,13 @@ class SmartContractOrchestrator(BaseComponent):
                     pr_url=result.get('pr_url')
                 )
                 
-                self.log_info(f"Completed project: {project_name}")
+                self.log_info(f"Completed project: {project_name} using token {token_index}")
                 
-                # Rotate GitHub token after each project
-                self.components['github'].rotate_token(project_name)
+                # CRITICAL FIX: Force rotation after each project in sequential mode
+                # This ensures we move to the next token for the next project
+                self.components['github'].rotate_token(project_name, force=True)
+                self.log_info(f"Rotated token after {project_name}")
+                
                 # Clear cached user info so it gets refreshed with new token
                 self._github_user_info = None
                 
@@ -277,24 +277,32 @@ class SmartContractOrchestrator(BaseComponent):
                     'project_name': project_name,
                     'status': 'failed',
                     'error': str(e),
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'token_index': self.components['github']._get_effective_token_index()
                 }
                 results.append(error_result)
                 
                 # Record failure in state tracker
                 self.state_tracker.mark_project_completed(
                     project_name,
-                    self.components['github'].current_token_index,
+                    self.components['github']._get_effective_token_index(),
                     success=False,
                     error=str(e)
                 )
                 
                 self.log_error(f"Project {project_name} failed: {str(e)}")
+                
+                # Still rotate token even on failure to try a different token for next project
+                try:
+                    self.components['github'].rotate_token(project_name, force=True)
+                    self.log_info(f"Rotated token after failed {project_name}")
+                except Exception as rotate_error:
+                    self.log_warning(f"Failed to rotate token after {project_name}: {rotate_error}")
         
         return results
     
     def _process_single_project(self, project: Dict[str, Any], manual_token_index: Optional[int] = None) -> Dict[str, Any]:
-        """Process a single project through the complete workflow with proper workspace handling"""
+        """Process a single project through the complete workflow with proper token management"""
         project_name = project['name']
         start_time = time.time()
         branch_name = f"feature/{project_name.lower().replace(' ', '-').replace('_', '-')}"
@@ -308,22 +316,28 @@ class SmartContractOrchestrator(BaseComponent):
         }
         
         try:
-            # CRITICAL FIX: Set up token for this project FIRST
+            # CRITICAL FIX: Handle token selection based on mode
+            github_manager = self.components['github']
+            
             if manual_token_index is not None:
-                # Force the specific token index to be used
-                self.components['github'].execute('force_token', token_index=manual_token_index)
+                # Single project mode with specific token
+                github_manager.execute('force_token', token_index=manual_token_index)
                 token_index = manual_token_index
                 self.log_info(f"Forcing token index {manual_token_index} for project {project_name}")
+            elif github_manager.batch_mode:
+                # Batch mode - get next available token through rotation
+                token_index = github_manager.get_next_token_index(project_name)
+                self.log_info(f"Auto-selected token index {token_index} for project {project_name} (batch mode)")
             else:
-                # Use intelligent token selection
-                token_index = self.components['github'].get_next_token_index(project_name)
-                self.log_info(f"Auto-selected token index {token_index} for project {project_name}")
+                # Single project mode without specific token - use intelligent selection
+                token_index = github_manager.get_next_token_index(project_name)
+                self.log_info(f"Auto-selected token index {token_index} for project {project_name} (single mode)")
             
             # Mark project as started in state tracker
             if not self.state_tracker.is_project_completed(project_name):
                 self.state_tracker.mark_project_started(project_name, token_index)
             
-            # Step 1: Create GitHub repository (will use the forced/selected token)
+            # Step 1: Create GitHub repository (will use the selected token)
             self.log_info(f"Creating GitHub repository for {project_name}")
             repo_url = self.components['github'].execute('create_repo', project=project)
             result['steps']['github_repo'] = {
@@ -361,7 +375,7 @@ class SmartContractOrchestrator(BaseComponent):
             
             # Step 4: Setup Git configuration with dynamic user info
             self.log_info(f"Setting up Git configuration for {project_name}")
-            # Get user info for the CURRENTLY ACTIVE TOKEN (not token index 0!)
+            # Get user info for the CURRENTLY ACTIVE TOKEN
             github_user_info = self._get_github_user_info()
             self.log_info(f"Retrieved GitHub user info - Name: {github_user_info['user_name']}, Email: {github_user_info['user_email']}")
             
@@ -499,7 +513,7 @@ class SmartContractOrchestrator(BaseComponent):
             result['duration'] = result['end_time'] - start_time
             
             # Use the actual token index that was attempted
-            result['token_index'] = token_index if 'token_index' in locals() else self.components['github'].current_token_index
+            result['token_index'] = token_index if 'token_index' in locals() else self.components['github']._get_effective_token_index()
 
             try:    
                 github_user_info = self._get_github_user_info()

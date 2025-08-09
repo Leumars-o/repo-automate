@@ -1,4 +1,4 @@
-# utils/state_tracker.py
+# utils/state_tracker.py - FIXED VERSION
 import json
 import time
 from typing import Dict, Any, List, Optional, Set
@@ -294,15 +294,39 @@ class StateTracker:
     def reset_state(self, reset_tokens: bool = False, reset_projects: bool = False) -> None:
         """Reset tracking state (useful for testing or starting fresh)"""
         if reset_tokens:
-            self.token_state = self._load_token_state().__class__.__dict__['_load_token_state'](self)
-            self.token_state_file.unlink(missing_ok=True)
+            # Reset to default token state
+            self.token_state = {
+                "current_token_index": 0,
+                "token_usage": {},
+                "tokens_blacklisted": [],
+                "last_rotation": None,
+                "rotation_count": 0
+            }
+            # Remove the file
+            if self.token_state_file.exists():
+                self.token_state_file.unlink()
+            print("✅ Token state reset successfully")
             
         if reset_projects:
-            self.project_state = self._load_project_state().__class__.__dict__['_load_project_state'](self)
-            self.project_state_file.unlink(missing_ok=True)
+            # Reset to default project state
+            self.project_state = {
+                "completed_projects": {},
+                "failed_projects": {},
+                "in_progress": {},
+                "project_queue": [],
+                "last_batch_execution": None,
+                "total_executions": 0
+            }
+            # Remove the file
+            if self.project_state_file.exists():
+                self.project_state_file.unlink()
+            print("✅ Project state reset successfully")
         
-        if reset_tokens or reset_projects:
-            print("State tracking files reset successfully")
+        # Save the reset states
+        if reset_tokens:
+            self._save_token_state()
+        if reset_projects:
+            self._save_project_state()
     
     def cleanup_stale_progress(self, max_age_hours: int = 24) -> None:
         """Clean up stale in-progress entries (from crashed/interrupted executions)"""
