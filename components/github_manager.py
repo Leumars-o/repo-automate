@@ -14,12 +14,13 @@ class GitHubManager(BaseComponent):
         self.tokens = self.github_config.get('tokens', [])
         self.current_token_index = 0
         self.manual_token_index = None
-        self.forced_token_index = None  # NEW: For forcing specific token usage
+        self.forced_token_index = None
+        self.batch_mode = False  # NEW: Track if we're in batch mode
         
         # Initialize state tracker
         self.state_tracker = StateTracker()
         self.state_tracker.initialize_tokens(self.tokens)
-        self.state_tracker.cleanup_stale_progress()  # Clean up any stale progress from crashes
+        self.state_tracker.cleanup_stale_progress()
         
         super().__init__(config, logger)
         
@@ -37,8 +38,24 @@ class GitHubManager(BaseComponent):
         self.log_info(f"Token state: {summary['token_state']}")
         self.log_info(f"Project state: {summary['project_state']}")
     
+    def set_batch_mode(self, batch_mode: bool) -> None:
+        """Enable/disable batch processing mode"""
+        self.batch_mode = batch_mode
+        if batch_mode:
+            # Clear manual overrides in batch mode to enable rotation
+            self.manual_token_index = None
+            self.forced_token_index = None
+            self.log_info("Batch mode enabled - token rotation activated")
+        else:
+            self.log_info("Batch mode disabled")
+    
     def set_manual_token_index(self, token_index: Optional[int]) -> None:
         """Set manual token index for single project execution"""
+        # Don't allow manual token setting in batch mode
+        if self.batch_mode and token_index is not None:
+            self.log_warning("Cannot set manual token index in batch mode - ignoring")
+            return
+            
         self.manual_token_index = token_index
         if token_index is not None:
             # Validate token index
@@ -49,6 +66,11 @@ class GitHubManager(BaseComponent):
     
     def force_token_index(self, token_index: int) -> None:
         """Force a specific token index to be used immediately"""
+        # Don't allow forced token setting in batch mode
+        if self.batch_mode:
+            self.log_warning("Cannot force token index in batch mode - ignoring")
+            return
+            
         if token_index < 0 or token_index >= len(self.tokens):
             raise GitHubError(f"Invalid token index {token_index}. Available indices: 0-{len(self.tokens)-1}")
         
@@ -58,13 +80,23 @@ class GitHubManager(BaseComponent):
     
     def get_next_token_index(self, project_name: str = None) -> int:
         """Get the next available token index based on usage and availability"""
-        # If forced_token_index is set, always use it
+        # In batch mode, always use state tracker for rotation
+        if self.batch_mode:
+            token_index = self.state_tracker.get_next_available_token_index(
+                self.tokens, 
+                None  # No manual override in batch mode
+            )
+            self.current_token_index = token_index
+            self.log_info(f"Auto-selected token index {token_index} for project {project_name or 'unknown'}")
+            return token_index
+        
+        # If forced_token_index is set, always use it (single project mode)
         if self.forced_token_index is not None:
             self.current_token_index = self.forced_token_index
             self.log_info(f"Using forced token index {self.forced_token_index} for project: {project_name or 'unknown'}")
             return self.forced_token_index
         
-        # Use manual token index if set
+        # Use manual token index if set (single project mode)
         if self.manual_token_index is not None:
             self.current_token_index = self.manual_token_index
             self.log_info(f"Using manual token index {self.manual_token_index} for project: {project_name or 'unknown'}")
@@ -73,7 +105,7 @@ class GitHubManager(BaseComponent):
         # Otherwise, use state tracker for intelligent selection
         token_index = self.state_tracker.get_next_available_token_index(
             self.tokens, 
-            None  # No manual override in this case
+            None
         )
         
         self.current_token_index = token_index
@@ -86,13 +118,19 @@ class GitHubManager(BaseComponent):
         if not self.tokens:
             raise GitHubError("No GitHub tokens available")
         
-        # Use forced token index if set
+        # In batch mode, always use current_token_index from rotation
+        if self.batch_mode:
+            if self.current_token_index >= len(self.tokens):
+                self.current_token_index = 0
+            return self.tokens[self.current_token_index]
+        
+        # Use forced token index if set (single project mode)
         if self.forced_token_index is not None:
             if self.forced_token_index >= len(self.tokens):
                 raise GitHubError(f"Forced token index {self.forced_token_index} out of range")
             return self.tokens[self.forced_token_index]
         
-        # Use manual token index if set
+        # Use manual token index if set (single project mode)
         if self.manual_token_index is not None:
             if self.manual_token_index >= len(self.tokens):
                 raise GitHubError(f"Manual token index {self.manual_token_index} out of range")
@@ -106,6 +144,8 @@ class GitHubManager(BaseComponent):
     
     def _get_effective_token_index(self) -> int:
         """Get the effective token index being used"""
+        if self.batch_mode:
+            return self.current_token_index
         if self.forced_token_index is not None:
             return self.forced_token_index
         if self.manual_token_index is not None:
@@ -139,28 +179,35 @@ class GitHubManager(BaseComponent):
     
     def rotate_token(self, project_name: str = None, force: bool = False) -> None:
         """Rotate to next available token"""
-        # Don't rotate if forced_token_index is set unless forced
-        if self.forced_token_index is not None and not force:
-            self.log_info("Forced token index set - rotation disabled")
-            return
-            
+        # In batch mode, always allow rotation
+        if not self.batch_mode:
+            # Don't rotate if forced_token_index is set unless forced
+            if self.forced_token_index is not None and not force:
+                self.log_info("Forced token index set - rotation disabled")
+                return
+                
         if len(self.tokens) <= 1 and not force:
             self.log_info("Only one token available, skipping rotation")
             return
         
         old_index = self.current_token_index
         
-        # Get next available token (excluding manual override for rotation)
-        temp_manual = self.manual_token_index
-        temp_forced = self.forced_token_index
-        self.manual_token_index = None  # Clear manual override for rotation
-        self.forced_token_index = None   # Clear forced override for rotation
-        
-        new_index = self.state_tracker.get_next_available_token_index(self.tokens)
-        
-        # Restore overrides
-        self.manual_token_index = temp_manual
-        self.forced_token_index = temp_forced
+        # Get next available token
+        if self.batch_mode:
+            # In batch mode, never use manual overrides for rotation
+            new_index = self.state_tracker.get_next_available_token_index(self.tokens)
+        else:
+            # In single project mode, temporarily clear overrides for rotation
+            temp_manual = self.manual_token_index
+            temp_forced = self.forced_token_index
+            self.manual_token_index = None
+            self.forced_token_index = None
+            
+            new_index = self.state_tracker.get_next_available_token_index(self.tokens)
+            
+            # Restore overrides
+            self.manual_token_index = temp_manual
+            self.forced_token_index = temp_forced
         
         self.current_token_index = new_index
         
@@ -185,10 +232,15 @@ class GitHubManager(BaseComponent):
             project_name = project['name']
             description = project.get('description', f'Smart contract project: {project_name}')
             
+            # Get token index for this project in batch mode
+            if self.batch_mode:
+                token_index = self.get_next_token_index(project_name)
+            else:
+                token_index = self._get_effective_token_index()
+            
             # Get current token and log which index is being used
             token = self._get_current_token()
-            effective_index = self._get_effective_token_index()
-            self.log_info(f"Using token index {effective_index} for repository creation")
+            self.log_info(f"Using token index {token_index} for repository creation")
             
             client = Github(token)
             
@@ -231,6 +283,12 @@ class GitHubManager(BaseComponent):
             
             # Record failed token usage
             self.record_token_usage(project_name, success=False, error=error_msg)
+            
+            # In batch mode, try rotating token and retrying once
+            if self.batch_mode and "rate limit" in error_msg.lower():
+                self.log_info(f"Rate limit detected, rotating token for {project_name}")
+                self.rotate_token(project_name, force=True)
+                # Don't retry here - let the orchestrator handle retries
             
             raise GitHubError(f"Failed to create repository: {error_msg}")
     
@@ -352,9 +410,6 @@ Smart Contract Automation System using token index {effective_index}
             error_msg = str(e)
             self.log_error(f"Failed to retrieve GitHub user info: {error_msg}")
             
-            # Don't record token usage failure for user info requests
-            # as this might be called frequently for validation
-            
             raise GitHubError(f"Failed to retrieve GitHub user info: {error_msg}")
     
     def check_token_validity(self, token_index: Optional[int] = None) -> bool:
@@ -386,7 +441,8 @@ Smart Contract Automation System using token index {effective_index}
             'check_token': self.check_token_validity,
             'get_available_tokens': self.get_available_tokens,
             'set_manual_token': self.set_manual_token_index,
-            'force_token': self.force_token_index  # NEW operation
+            'force_token': self.force_token_index,
+            'set_batch_mode': self.set_batch_mode  # NEW operation
         }
         
         if operation not in operations:
@@ -418,5 +474,6 @@ Smart Contract Automation System using token index {effective_index}
             'available_token_indices': available_tokens,
             'manual_token_override': self.manual_token_index,
             'forced_token_override': self.forced_token_index,
+            'batch_mode': self.batch_mode,
             'state_summary': summary
         }

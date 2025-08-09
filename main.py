@@ -63,6 +63,10 @@ class AutomationCLI:
             signal.signal(signal.SIGINT, self._signal_handler)
             signal.signal(signal.SIGTERM, self._signal_handler)
             
+            # CRITICAL FIX: Enable batch mode in GitHub manager to allow token rotation
+            self.orchestrator.components['github'].execute('set_batch_mode', batch_mode=True)
+            self.logger.info("Enabled batch mode for token rotation")
+            
             # Process all projects with skip_completed option
             results = self.orchestrator.execute('process_all', skip_completed=skip_completed)
             
@@ -80,6 +84,9 @@ class AutomationCLI:
             self.logger.error(f"Automation failed: {str(e)}")
             sys.exit(1)
         finally:
+            # Disable batch mode after processing
+            if self.orchestrator and self.orchestrator.components.get('github'):
+                self.orchestrator.components['github'].execute('set_batch_mode', batch_mode=False)
             self._cleanup()
     
     def run_single_project(self, project_name: str, enable_testing: bool = False, token_index: Optional[int] = None) -> None:
@@ -100,11 +107,14 @@ class AutomationCLI:
             
             self.logger.info(f"Running automation for project: {project_name}")
             
+            # CRITICAL FIX: Ensure batch mode is disabled for single project
+            self.orchestrator.components['github'].execute('set_batch_mode', batch_mode=False)
+            
             if token_index is not None:
                 self.logger.info(f"Using manual token index: {token_index}")
                 print(f"🔑 Using token index: {token_index}")
                 
-                # CRITICAL FIX: Force the GitHub manager to use the specific token
+                # Force the GitHub manager to use the specific token
                 self.orchestrator.components['github'].execute('force_token', token_index=token_index)
             else:
                 print("🔑 Auto-selecting least used available token")
@@ -181,6 +191,10 @@ class AutomationCLI:
         except Exception as e:
             self.logger.error(f"Single project automation failed: {str(e)}")
             print(f"\n💥 Exception: {str(e)}")
+        finally:
+            # Clear any token overrides after single project
+            if self.orchestrator and self.orchestrator.components.get('github'):
+                self.orchestrator.components['github'].execute('set_manual_token', token_index=None)
     
     def test_project(self, project_name: str) -> None:
         """Run tests only for a specific project"""

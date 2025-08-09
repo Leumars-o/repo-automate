@@ -20,7 +20,7 @@ automation:
   max_retries: 3
   retry_delay: 30
   timeout: 300
-  parallel_workers: 3
+  parallel_workers: 2
   log_level: INFO
   cleanup_on_failure: true
 
