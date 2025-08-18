@@ -202,3 +202,8 @@ class SummaryTracker(BaseComponent):
             'total_summaries': len(self.summaries),
             'stats': stats
         }
+    
+    def save_immediately(self) -> None:
+        """Save summaries immediately (called after each successful project)"""
+        self._save_summaries()
+        self.log_info("Summaries saved immediately after project completion")
