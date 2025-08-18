@@ -17,12 +17,14 @@ smart_contracts:
   contract_template: basic
 
 automation:
-  max_retries: 3
+  max_retries: 5
   retry_delay: 30
   timeout: 300
   parallel_workers: 2
   log_level: INFO
-  cleanup_on_failure: true
+  cleanup_on_failure: false
+  cleanup_on_success: false
+  preserve_workspaces: true
 
 results:
   output_file: results/automation_results.json
