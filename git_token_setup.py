@@ -83,33 +83,36 @@ def save_tokens_to_yaml(new_token, secrets_dir):
     existing_tokens = load_existing_tokens()
     
     # Check if token already exists
-    if new_token in existing_tokens:
-        print(f"\n⚠️  Token already exists in {tokens_file}")
-        overwrite = input("Do you want to keep it anyway? (y/N): ").lower()
-        if overwrite != 'y':
-            return tokens_file
-    else:
-        # Add new token to the list
-        existing_tokens.append(new_token)
-    
-    # Create YAML structure
-    tokens_data = {
-        'tokens': existing_tokens
-    }
-    
-    # Save to YAML file
-    with open(tokens_file, 'w') as f:
-        yaml.dump(tokens_data, f, default_flow_style=False, indent=2)
-    
-    # Set restrictive permissions (Unix-like systems)
     try:
-        os.chmod(tokens_file, 0o600)
-    except Exception:
-        pass  # Windows doesn't support chmod
-    
-    print(f"\n✓ Tokens saved to: {tokens_file}")
-    print(f" 📋 Total tokens: {len(existing_tokens)}")
-    return tokens_file
+        existing_index = existing_tokens.index(new_token)
+        print(f"\n⚠️  Token already exists in {tokens_file}")
+        print(f"📍 Token found at index: {existing_index}")
+        print("❌ Token will not be added again.")
+        return tokens_file, existing_index
+    except ValueError:
+        # Token doesn't exist, add it
+        existing_tokens.append(new_token)
+        new_index = len(existing_tokens) - 1
+        
+        # Create YAML structure
+        tokens_data = {
+            'tokens': existing_tokens
+        }
+        
+        # Save to YAML file
+        with open(tokens_file, 'w') as f:
+            yaml.dump(tokens_data, f, default_flow_style=False, indent=2)
+        
+        # Set restrictive permissions (Unix-like systems)
+        try:
+            os.chmod(tokens_file, 0o600)
+        except Exception:
+            pass  # Windows doesn't support chmod
+        
+        print(f"\n✓ Token saved to: {tokens_file}")
+        print(f"📍 Token added at index: {new_index}")
+        print(f"📋 Total tokens: {len(existing_tokens)}")
+        return tokens_file, new_index
 
 
 def test_token_access(token):
@@ -179,12 +182,22 @@ def main():
     if not test_token_access(token):
         print("\nWarning: Token test failed, but continuing...")
     
-    # Save token
-    save_tokens_to_yaml(token, secrets_dir)
+    # Save token and get index information
+    tokens_file, token_index = save_tokens_to_yaml(token, secrets_dir)
+    
+    # Load tokens to check if it was a duplicate
+    existing_tokens = load_existing_tokens()
     
     print("\n" + "="*60)
-    print("TOKEN ADDED SUCESSFULLY!")
-    print("="*60)
+    if token in existing_tokens and token_index < len(existing_tokens) - 1:
+        print("TOKEN ALREADY EXISTS!")
+        print("="*60)
+        print(f"📍 Token exists at index: {token_index}")
+        print(f"📋 Total tokens in file: {len(existing_tokens)}")
+    else:
+        print("TOKEN ADDED SUCCESSFULLY!")
+        print("="*60)
+    
     print(f"\nYou can now run:")
     print(f"  python main.py --action status")
     print(f"  python main.py --action run")
