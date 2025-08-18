@@ -309,3 +309,7 @@ class ResultTracker(BaseComponent):
             'track_metrics': self.track_metrics,
             'metrics': self.metrics
         }
+    def save_immediately(self) -> None:
+        """Save summaries immediately (called after each successful project)"""
+        self._save_summaries()
+        self.log_info("Summaries saved immediately after project completion")
