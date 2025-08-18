@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 import time
 import random
 import json
+import shutil
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.base_component import BaseComponent
@@ -14,6 +15,8 @@ from components.contract_manager import ContractManager
 from components.result_tracker import ResultTracker
 from components.summary_tracker import SummaryTracker
 from utils.state_tracker import StateTracker
+from utils.commit_messages import CommitMessageGenerator
+
 
 class SmartContractOrchestrator(BaseComponent):
     """Main orchestrator that coordinates all components with state tracking"""
@@ -27,59 +30,6 @@ class SmartContractOrchestrator(BaseComponent):
         
         # Initialize state tracker
         self.state_tracker = StateTracker()
-
-        # Add commit message templates for uniqueness
-        self.commit_messages = [
-            "Added {project_name} smart contract implementation",
-            "Implement {project_name} blockchain solution",
-            "Deployed {project_name} Clarity smart contract",
-            "Created {project_name} decentralized application core",
-            "Build {project_name} smart contract infrastructure",
-            "Develop {project_name} blockchain protocol",
-            "Launch {project_name} smart contract system",
-            "Establish {project_name} blockchain protocol foundation",
-            "Integrate {project_name} smart contract functionality",
-            "Constructed {project_name} blockchain-based solution",
-            "Engineered {project_name} decentralized smart contract",
-            "Crafted {project_name} innovative blockchain implementation",
-            "Designed {project_name} robust smart contract architecture",
-            "structured {project_name} cutting-edge blockchain solution",
-            "programmed {project_name} scalable smart contract platform",
-            "Initialize {project_name} enterprise-grade blockchain solution",
-            "Bootstraped {project_name} next-generation smart contract",
-            "intrgrated {project_name} revolutionary blockchain protocol",
-            "set-up {project_name} advanced smart contract framework",
-            "{project_name} blockchain infrastructure added"
-        ]
-        
-        # Enhanced detail descriptions for richer commit messages
-        self.commit_details = [
-            "- Implemented core contract functionality",
-            "- Added comprehensive error handling", 
-            "- Integrated security best practices",
-            "- Included detailed documentation",
-            "- Added contract validation",
-            "- Implemented access controls",
-            "- Integrated multi-signature support",
-            "- Added event logging system",
-            "- Implemented emergency pause functionality",
-            "- Added performance optimizations",
-            "- Implemented governance mechanisms",
-            "- Created developer documentation"
-        ]
-        
-        # Technical enhancement options for variety
-        self.technical_features = [
-            "- Leveraged Clarity's built-in safety features",
-            "- Utilized Stacks blockchain capabilities",
-            "- Integrated with Bitcoin settlement layer",
-            "- Implemented predictable smart contract execution",
-            "- Added STX token integration",
-            "- Created robust transaction handling",
-            "- Ensured deterministic contract behavior",
-            "- Optimized for Stacks network efficiency",
-            "- Integrated continuous integration pipeline"
-        ]
 
         # Call parent constructor
         super().__init__(config, logger)
@@ -135,10 +85,74 @@ class SmartContractOrchestrator(BaseComponent):
             
             self.log_info(f"Using fallback Git config - Name: {fallback_info['user_name']}, Email: {fallback_info['user_email']}")
             return fallback_info
+
+    
+    def _process_projects_parallel_1to1(self, projects: List[Dict[str, Any]], available_tokens: List[int]) -> List[Dict[str, Any]]:
+        """Process projects in parallel with 1:1 token assignment"""
+        results = []
         
+        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(available_tokens))) as executor:
+            # Submit projects with specific token assignments
+            future_to_project = {}
+            for i, project in enumerate(projects):
+                if i >= len(available_tokens):
+                    break  # Stop when we run out of tokens
+                
+                token_index = available_tokens[i]
+                self.log_info(f"Assigning token {token_index} to project {project['name']}")
+                
+                # Mark project as started
+                self.state_tracker.mark_project_started(project['name'], token_index)
+                
+                future = executor.submit(self._process_single_project, project, token_index)
+                future_to_project[future] = (project, token_index)
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_project):
+                project, token_index = future_to_project[future]
+                project_name = project['name']
+                
+                try:
+                    result = future.result()
+                    results.append(result)
+                    
+                    # Record completion in state tracker
+                    self.state_tracker.mark_project_completed(
+                        project_name,
+                        token_index,
+                        success=(result.get('status') == 'completed'),
+                        duration=result.get('duration', 0),
+                        error=result.get('error'),
+                        pr_url=result.get('pr_url')
+                    )
+                    
+                    self.log_info(f"Completed project: {project_name} using assigned token {token_index}")
+                    
+                except Exception as e:
+                    error_result = {
+                        'project_name': project_name,
+                        'status': 'failed',
+                        'error': str(e),
+                        'timestamp': time.time(),
+                        'token_index': token_index
+                    }
+                    results.append(error_result)
+                    
+                    # Record failure in state tracker
+                    self.state_tracker.mark_project_completed(
+                        project_name,
+                        token_index,
+                        success=False,
+                        error=str(e)
+                    )
+                    
+                    self.log_error(f"Project {project_name} failed with token {token_index}: {str(e)}")
+        
+        return results
+
     
     def process_all_projects(self, skip_completed: bool = True) -> List[Dict[str, Any]]:
-        """Process all projects with parallel execution, skipping completed ones"""
+        """Process all projects with 1:1 token mapping, stopping when no more tokens available"""
         all_projects = self.config.get('projects', [])
         
         if not all_projects:
@@ -159,18 +173,26 @@ class SmartContractOrchestrator(BaseComponent):
             self.log_info("All projects have been completed successfully!")
             return []
         
-        self.log_info(f"Starting automation for {len(projects)} projects")
+        # Get available tokens and limit projects to token count
+        github_manager = self.components['github']
+        available_tokens = github_manager.get_available_tokens()
         
-        # CRITICAL FIX: Enable batch mode before processing
+        if len(projects) > len(available_tokens):
+            projects = projects[:len(available_tokens)]
+            self.log_info(f"Limited to {len(available_tokens)} projects to match available tokens (1:1 mapping)")
+        
+        self.log_info(f"Starting automation for {len(projects)} projects with 1:1 token mapping")
+        
+        # Enable batch mode before processing
         self.components['github'].execute('set_batch_mode', batch_mode=True)
-        self.log_info("Enabled batch mode for token rotation")
+        self.log_info("Enabled batch mode for 1:1 token mapping")
         
         try:
-            # Process projects in parallel or sequential
-            if self.max_workers > 1:
-                return self._process_projects_parallel(projects)
-            else:
-                return self._process_projects_sequential(projects)
+            # CRITICAL FIX: Always use safe sequential processing to prevent file conflicts
+            # Force sequential mode regardless of max_workers setting for workspace safety
+            self.log_info("Using safe sequential processing to prevent workspace conflicts")
+            return self._process_projects_sequential_1to1_safe(projects, available_tokens)
+            
         finally:
             # Always disable batch mode after processing
             self.components['github'].execute('set_batch_mode', batch_mode=False)
@@ -302,7 +324,7 @@ class SmartContractOrchestrator(BaseComponent):
         return results
     
     def _process_single_project(self, project: Dict[str, Any], manual_token_index: Optional[int] = None) -> Dict[str, Any]:
-        """Process a single project through the complete workflow with proper token management"""
+        """Process a single project through the complete workflow"""
         project_name = project['name']
         start_time = time.time()
         branch_name = f"feature/{project_name.lower().replace(' ', '-').replace('_', '-')}"
@@ -316,7 +338,7 @@ class SmartContractOrchestrator(BaseComponent):
         }
         
         try:
-            # CRITICAL FIX: Handle token selection based on mode
+            # CRITICAL FIX: Token should already be set by _process_single_project_with_token
             github_manager = self.components['github']
             
             if manual_token_index is not None:
@@ -324,20 +346,17 @@ class SmartContractOrchestrator(BaseComponent):
                 github_manager.execute('force_token', token_index=manual_token_index)
                 token_index = manual_token_index
                 self.log_info(f"Forcing token index {manual_token_index} for project {project_name}")
-            elif github_manager.batch_mode:
-                # Batch mode - get next available token through rotation
-                token_index = github_manager.get_next_token_index(project_name)
-                self.log_info(f"Auto-selected token index {token_index} for project {project_name} (batch mode)")
             else:
-                # Single project mode without specific token - use intelligent selection
-                token_index = github_manager.get_next_token_index(project_name)
-                self.log_info(f"Auto-selected token index {token_index} for project {project_name} (single mode)")
+                # Use the currently assigned token (should be set by wrapper method)
+                token_index = github_manager._get_effective_token_index()
+                self.log_info(f"Using pre-assigned token index {token_index} for project {project_name}")
             
-            # Mark project as started in state tracker
+            # Mark project as started in state tracker (if not already marked)
             if not self.state_tracker.is_project_completed(project_name):
                 self.state_tracker.mark_project_started(project_name, token_index)
             
-            # Step 1: Create GitHub repository (will use the selected token)
+            # Rest of the processing remains the same...
+            # Step 1: Create GitHub repository
             self.log_info(f"Creating GitHub repository for {project_name}")
             repo_url = self.components['github'].execute('create_repo', project=project)
             result['steps']['github_repo'] = {
@@ -375,7 +394,6 @@ class SmartContractOrchestrator(BaseComponent):
             
             # Step 4: Setup Git configuration with dynamic user info
             self.log_info(f"Setting up Git configuration for {project_name}")
-            # Get user info for the CURRENTLY ACTIVE TOKEN
             github_user_info = self._get_github_user_info()
             self.log_info(f"Retrieved GitHub user info - Name: {github_user_info['user_name']}, Email: {github_user_info['user_email']}")
             
@@ -420,6 +438,38 @@ class SmartContractOrchestrator(BaseComponent):
             self.log_info(f"Compiling contract for {project_name}")
             contract_result = self._compile_loop(project, workspace_path)
             result['steps']['contract_compilation'] = contract_result
+
+            # NEW Step 7.5: First Commit - Smart Contract Implementation
+            self.log_info(f"Making first commit: Smart contract implementation for {project_name}")
+            first_commit_message = CommitMessageGenerator.generate_smart_contract_commit(project_name)
+            try:
+                first_commit_hash = self.components['git'].execute('commit',
+                                                                project_name=project_name,
+                                                                commit_message=first_commit_message)
+                
+                if first_commit_hash == "no-changes":
+                    self.log_warning("No changes detected for first commit, but continuing...")
+                    first_commit_hash = "no-changes"
+                
+                result['steps']['first_commit'] = {
+                    'status': 'success',
+                    'commit_hash': first_commit_hash,
+                    'commit_message': first_commit_message,
+                    'commit_type': 'smart_contract_implementation',
+                    'timestamp': time.time()
+                }
+                
+                self.log_info(f"First commit completed: {first_commit_hash}")
+                
+            except Exception as commit_e:
+                self.log_error(f"First commit failed for {project_name}: {str(commit_e)}")
+                # Don't fail the entire process for commit issues
+                result['steps']['first_commit'] = {
+                    'status': 'failed',
+                    'error': str(commit_e),
+                    'commit_type': 'smart_contract_implementation',
+                    'timestamp': time.time()
+                }
             
             # Step 8: Create project README at root level
             self.log_info(f"Generating comprehensive README for {project_name}")
@@ -441,70 +491,138 @@ class SmartContractOrchestrator(BaseComponent):
             # Get workspace status for debugging
             git_status = self.components['git'].execute('get_status', project_name=project_name)
             self.log_info(f"Git status before commit: {git_status}")
-            
-            # Step 9: Commit and push changes to feature branch
-            self.log_info(f"Committing and pushing changes for {project_name}")
-            commit_message = self._get_random_commit_message(project_name)
+
+            # NEW Step 8.5: Second Commit - Documentation
+            self.log_info(f"Making second commit: Documentation for {project_name}")
+            second_commit_message = CommitMessageGenerator.generate_documentation_commit(project_name)
             
             try:
-                commit_hash = self.components['git'].execute('commit',
-                                                           project_name=project_name,
-                                                           commit_message=commit_message)
+                second_commit_hash = self.components['git'].execute('commit',
+                                                                project_name=project_name,
+                                                                commit_message=second_commit_message)
                 
-                if commit_hash == "no-changes":
-                    self.log_warning("No changes detected for commit, but continuing...")
-                    commit_hash = "no-changes"
+                if second_commit_hash == "no-changes":
+                    self.log_warning("No changes detected for second commit")
+                    second_commit_hash = "no-changes"
                 
-                self.components['git'].execute('push',
-                                             project_name=project_name,
-                                             branch_name=branch_name)
-                
-                result['steps']['git_commit_push'] = {
+                result['steps']['second_commit'] = {
                     'status': 'success',
-                    'commit_hash': commit_hash,
-                    'commit_message': commit_message,
-                    'branch_name': branch_name,
+                    'commit_hash': second_commit_hash,
+                    'commit_message': second_commit_message,
+                    'commit_type': 'documentation',
                     'timestamp': time.time()
                 }
                 
-            except Exception as git_e:
-                self.log_error(f"Git commit/push failed for {project_name}: {str(git_e)}")
+                self.log_info(f"Second commit completed: {second_commit_hash}")
                 
-                # Get detailed git status for debugging
-                final_git_status = self.components['git'].execute('get_status', project_name=project_name)
-                self.log_error(f"Final git status: {final_git_status}")
-                
-                raise AutomationError(f"Git operations failed: {str(git_e)}")
+            except Exception as commit_e:
+                self.log_error(f"Second commit failed for {project_name}: {str(commit_e)}")
+                result['steps']['second_commit'] = {
+                    'status': 'failed',
+                    'error': str(commit_e),
+                    'commit_type': 'documentation',
+                    'timestamp': time.time()
+                }
             
-            # Step 10: Create pull request from feature branch to main
+            # Verify workspace before final operations
+            self.log_info(f"Verifying workspace before final operations for {project_name}")
+            if not self.components['git'].execute('verify_workspace', project_name=project_name):
+                raise AutomationError(f"Workspace verification failed before final operations")
+            
+           # Step 9: Push all commits to feature branch
+            self.log_info(f"Pushing all commits for {project_name}")
+            try:
+                self.components['git'].execute('push',
+                                            project_name=project_name,
+                                            branch_name=branch_name)
+                
+                result['steps']['git_push'] = {
+                    'status': 'success',
+                    'branch_name': branch_name,
+                    'commits_pushed': 2,  # Two commits pushed
+                    'timestamp': time.time()
+                }
+                
+            except Exception as push_e:
+                self.log_error(f"Git push failed for {project_name}: {str(push_e)}")
+                raise AutomationError(f"Git push operations failed: {str(push_e)}")
+            
+            # Step 10: Create pull request from feature branch to main (with retry logic)
             self.log_info(f"Creating pull request for {project_name}")
-            pr_url = self.components['github'].execute('create_pr',
-                                                    project=project,
-                                                    branch_name=branch_name,
-                                                    base_branch="main")
-            result['steps']['pull_request'] = {
-                'status': 'success',
-                'pr_url': pr_url,
-                'branch_name': branch_name,
-                'base_branch': 'main',
-                'timestamp': time.time()
-            }
-            
-            # Step 11: Record results
+            try:
+                pr_url = self.components['github'].execute('create_pr',
+                                                        project=project,
+                                                        branch_name=branch_name,
+                                                        base_branch="main")
+                
+                if pr_url:
+                    result['steps']['pull_request'] = {
+                        'status': 'success',
+                        'pr_url': pr_url,
+                        'branch_name': branch_name,
+                        'base_branch': 'main',
+                        'timestamp': time.time()
+                    }
+                    result['pr_url'] = pr_url
+                else:
+                    # PR creation failed but project is still successful
+                    result['steps']['pull_request'] = {
+                        'status': 'failed_but_not_critical',
+                        'branch_name': branch_name,
+                        'base_branch': 'main',
+                        'timestamp': time.time(),
+                        'note': 'PR creation failed but code was successfully pushed'
+                    }
+                    result['pr_url'] = None
+                    self.log_warning(f"PR creation failed for {project_name}, but project considered successful since code was pushed")
+
+            except Exception as e:
+                # PR creation failed but project is still successful since code was pushed
+                result['steps']['pull_request'] = {
+                    'status': 'failed_but_not_critical',
+                    'error': str(e),
+                    'branch_name': branch_name,
+                    'base_branch': 'main',
+                    'timestamp': time.time(),
+                    'note': 'PR creation failed but code was successfully pushed'
+                }
+                result['pr_url'] = None
+                self.log_warning(f"PR creation failed for {project_name}, but project considered successful since code was pushed: {str(e)}")
+
+            # Step 11: Record results (PROJECT IS ALWAYS SUCCESSFUL IF WE REACH HERE)
             result['status'] = 'completed'
             result['end_time'] = time.time()
             result['duration'] = result['end_time'] - start_time
-            result['pr_url'] = pr_url
-            result['token_index'] = token_index  # Use the actual token index used
+            result['token_index'] = token_index
             result['github_username'] = github_user_info['username']
             result['contract_directory'] = contract_dir
-            result['commit_message'] = commit_message
-            
+
+            if 'second_commit' in result['steps'] and result['steps']['second_commit'].get('status') == 'success':
+                result['commit_message'] = result['steps']['second_commit']['commit_message']
+            elif 'first_commit' in result['steps'] and result['steps']['first_commit'].get('status') == 'success':
+                result['commit_message'] = result['steps']['first_commit']['commit_message']
+            else:
+                # Fallback
+                result['commit_message'] = f"Implemented {project_name} smart contract with documentation"
+                
             # Record in detailed tracker
             self.components['tracker'].execute('record_result', result=result)
             
             # Record clean summary for personal use
             self.components['summary'].execute('record_summary', result=result)
+
+            # New Record summary implementation
+            self.components['summary'].save_immediately()
+
+            self.log_info(f"Saved summary for completed project: {project_name}")
+            
+            # CHECK CLEANUP CONFIGURATION
+            cleanup_on_success = self.automation_config.get('cleanup_on_success', False)
+            if cleanup_on_success:
+                self._cleanup_successful_project(project_name)
+                self.log_info(f"Cleaned up successful project: {project_name}")
+            else:
+                self.log_info(f"Project {project_name} completed successfully - workspace preserved at {workspace_path}")
             
         except Exception as e:
             result['status'] = 'failed'
@@ -513,7 +631,7 @@ class SmartContractOrchestrator(BaseComponent):
             result['duration'] = result['end_time'] - start_time
             
             # Use the actual token index that was attempted
-            result['token_index'] = token_index if 'token_index' in locals() else self.components['github']._get_effective_token_index()
+            result['token_index'] = token_index if 'token_index' in locals() else github_manager._get_effective_token_index()
 
             try:    
                 github_user_info = self._get_github_user_info()
@@ -521,35 +639,236 @@ class SmartContractOrchestrator(BaseComponent):
             except:
                 result['github_username'] = 'unknown'
             
-            # Cleanup on failure if configured
-            if self.automation_config.get('cleanup_on_failure', True):
+            # CRITICAL FIX: NO AUTO-CLEANUP unless specifically configured
+            cleanup_on_failure = self.automation_config.get('cleanup_on_failure', False)
+            if cleanup_on_failure:
                 self._cleanup_failed_project(project_name)
+                self.log_info(f"Cleaned up failed project: {project_name}")
+            else:
+                self.log_info(f"Project {project_name} failed - workspace preserved for debugging at workspace/{project_name}")
             
             raise AutomationError(f"Project {project_name} failed: {str(e)}")
         
         return result
+
+
+    def _process_projects_parallel_1to1(self, projects: List[Dict[str, Any]], available_tokens: List[int]) -> List[Dict[str, Any]]:
+        """Process projects in parallel with 1:1 token assignment"""
+        results = []
+        
+        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(available_tokens))) as executor:
+            # Submit projects with specific token assignments
+            future_to_project = {}
+            for i, project in enumerate(projects):
+                if i >= len(available_tokens):
+                    break  # Stop when we run out of tokens
+                
+                token_index = available_tokens[i]
+                self.log_info(f"Assigning token {token_index} to project {project['name']}")
+                
+                # Mark project as started
+                self.state_tracker.mark_project_started(project['name'], token_index)
+                
+                # CRITICAL FIX: Pass the specific token assignment to the worker
+                future = executor.submit(self._process_single_project_with_token, project, token_index)
+                future_to_project[future] = (project, token_index)
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_project):
+                project, token_index = future_to_project[future]
+                project_name = project['name']
+                
+                try:
+                    result = future.result()
+                    results.append(result)
+                    
+                    # Record completion in state tracker
+                    self.state_tracker.mark_project_completed(
+                        project_name,
+                        token_index,
+                        success=(result.get('status') == 'completed'),
+                        duration=result.get('duration', 0),
+                        error=result.get('error'),
+                        pr_url=result.get('pr_url')
+                    )
+                    
+                    self.log_info(f"Completed project: {project_name} using assigned token {token_index}")
+                    
+                except Exception as e:
+                    error_result = {
+                        'project_name': project_name,
+                        'status': 'failed',
+                        'error': str(e),
+                        'timestamp': time.time(),
+                        'token_index': token_index
+                    }
+                    results.append(error_result)
+                    
+                    # Record failure in state tracker
+                    self.state_tracker.mark_project_completed(
+                        project_name,
+                        token_index,
+                        success=False,
+                        error=str(e)
+                    )
+                    
+                    self.log_error(f"Project {project_name} failed with token {token_index}: {str(e)}")
+        
+        return results
+
+    def _process_single_project_with_token(self, project: Dict[str, Any], assigned_token_index: int) -> Dict[str, Any]:
+        """Process a single project with a specific token assignment (for 1:1 mapping)"""
+        project_name = project['name']
+        
+        # CRITICAL FIX: Force the specific token assignment BEFORE any GitHub operations
+        github_manager = self.components['github']
+        
+        # Force the GitHub manager to use the assigned token for this entire project
+        github_manager.execute('force_token', token_index=assigned_token_index)
+        self.log_info(f"Locked token {assigned_token_index} for project {project_name}")
+        
+        try:
+            # Process the project with the locked token
+            result = self._process_single_project(project, assigned_token_index)
+            return result
+        except Exception as e:
+            # ONLY cleanup the failed project, not successful ones
+            cleanup_on_failure = self.automation_config.get('cleanup_on_failure', False)
+            if cleanup_on_failure:
+                self._cleanup_failed_project(project_name)
+                self.log_info(f"Cleaned up failed project: {project_name}")
+            else:
+                self.log_info(f"Project {project_name} failed - workspace preserved for debugging")
+            
+            # Re-raise the exception after cleanup
+            raise e
+        finally:
+            # Clear the forced token after the project completes (for parallel processing)
+            github_manager.forced_token_index = None
+            self.log_info(f"Released token {assigned_token_index} after {project_name}")
+
+    def _process_single_project_with_token_safe(self, project: Dict[str, Any], assigned_token_index: int) -> Dict[str, Any]:
+        """Process a single project with workspace safety - ensures complete lifecycle before next project"""
+        project_name = project['name']
+        
+        # CRITICAL FIX: Force the specific token assignment BEFORE any operations
+        github_manager = self.components['github']
+        github_manager.execute('force_token', token_index=assigned_token_index)
+        self.log_info(f"Locked token {assigned_token_index} for project {project_name}")
+        
+        try:
+            # STEP 1: Ensure any existing workspace is cleaned up first
+            self._ensure_clean_workspace(project_name)
+            
+            # STEP 2: Process the project with the locked token
+            result = self._process_single_project(project, assigned_token_index)
+            
+            # STEP 3: If successful, optionally cleanup or preserve based on config
+            if result.get('status') != 'completed':
+                cleanup_on_failure = self.automation_config.get('cleanup_on_failure', True)
+                if cleanup_on_failure:
+                    self._cleanup_failed_project(project_name)
+                    self.log_info(f"Cleaned up failed project workspace: {project_name}")
+                else:
+                    self.log_info(f"Project {project_name} failed - workspace preserved for debugging")
+            else:
+                # SUCCESS - DON'T CLEANUP unless explicitly configured
+                cleanup_on_success = self.automation_config.get('cleanup_on_success', False)
+                if cleanup_on_success:
+                    self._cleanup_successful_project(project_name)
+                    self.log_info(f"Cleaned up successful project workspace: {project_name}")
+                else:
+                    self.log_info(f"Project {project_name} completed successfully - workspace preserved")
+            
+            return result
+            
+        except Exception as e:
+            # STEP 4: On failure, cleanup the workspace to prevent conflicts
+            self.log_error(f"Project {project_name} failed: {str(e)}")
+            
+            cleanup_on_failure = self.automation_config.get('cleanup_on_failure', True)  # Default True for failures
+            if cleanup_on_failure:
+                self._cleanup_failed_project(project_name)
+                self.log_info(f"Cleaned up failed project workspace: {project_name}")
+            else:
+                self.log_info(f"Project {project_name} failed - workspace preserved for debugging")
+            
+            # Re-raise the exception
+            raise e
+            
+        finally:
+            # STEP 5: Always release the token
+            github_manager.forced_token_index = None
+            self.log_info(f"Released token {assigned_token_index} after {project_name}")
+
+
+    def _process_projects_sequential_1to1_safe(self, projects: List[Dict[str, Any]], available_tokens: List[int]) -> List[Dict[str, Any]]:
+        """Process projects sequentially with 1:1 token assignment and safe workspace handling"""
+        results = []
+        
+        for i, project in enumerate(projects):
+            if i >= len(available_tokens):
+                self.log_info(f"Stopping at project {i+1} - no more tokens available (1:1 mapping)")
+                break
+            
+            project_name = project['name']
+            token_index = available_tokens[i]
+            
+            try:
+                self.log_info(f"Processing {project_name} with assigned token {token_index}")
+                
+                # Mark project as started
+                self.state_tracker.mark_project_started(project_name, token_index)
+                
+                # CRITICAL FIX: Process project completely before moving to next
+                # This ensures no workspace conflicts
+                result = self._process_single_project_with_token_safe(project, token_index)
+                results.append(result)
+                
+                # Record completion in state tracker
+                self.state_tracker.mark_project_completed(
+                    project_name,
+                    token_index,
+                    success=(result.get('status') == 'completed'),
+                    duration=result.get('duration', 0),
+                    error=result.get('error'),
+                    pr_url=result.get('pr_url')
+                )
+                
+                self.log_info(f"Completed project: {project_name} using assigned token {token_index}")
+                
+                # IMPORTANT: Save summaries immediately after each success
+                if result.get('status') == 'completed':
+                    self.components['summary'].execute('record_summary', result=result)
+                    self.components['summary'].save_immediately()
+                    self.log_info(f"Saved summary for completed project: {project_name}")
+                
+            except Exception as e:
+                error_result = {
+                    'project_name': project_name,
+                    'status': 'failed',
+                    'error': str(e),
+                    'timestamp': time.time(),
+                    'token_index': token_index
+                }
+                results.append(error_result)
+                
+                # Record failure in state tracker
+                self.state_tracker.mark_project_completed(
+                    project_name,
+                    token_index,
+                    success=False,
+                    error=str(e)
+                )
+                
+                self.log_error(f"Project {project_name} failed with assigned token {token_index}: {str(e)}")
+        
+        return results
+
     
     def _get_random_commit_message(self, project_name: str) -> str:
-        """Generate a random, unique commit message with rich details"""
-        
-        # 1. Select random main commit message template
-        template = random.choice(self.commit_messages)
-        main_message = template.format(project_name=project_name)
-        
-        # 2. Select 2-3 random general details
-        selected_details = random.sample(self.commit_details, random.randint(2, 3))
-        
-        # 3. Select 1-2 random technical features
-        selected_technical = random.sample(self.technical_features, random.randint(1, 2))
-        
-        # 4. Combine all elements into professional commit message
-        commit_message = main_message
-        commit_message += "\n"
-        commit_message += "\n".join(selected_details)
-        commit_message += "\n"
-        commit_message += "\n".join(selected_technical)
-        
-        return commit_message
+        """Generate a random, unique commit message (for backward compatibility)"""
+        return CommitMessageGenerator.generate_final_commit(project_name)
     
     def _compile_loop(self, project: Dict[str, Any], workspace_path: str) -> Dict[str, Any]:
         """Compile contract with error fixing loop using persistent Claude sessions"""
@@ -699,6 +1018,56 @@ class SmartContractOrchestrator(BaseComponent):
             self.log_info(f"Cleaned up workspace for failed project: {project_name}")
         except Exception as e:
             self.log_error(f"Failed to cleanup project {project_name}: {str(e)}")
+
+    def _cleanup_successful_project(self, project_name: str) -> None:
+        """Clean up resources for a successful project"""
+        try:
+            # Clean up Git workspace
+            self.components['git'].execute('cleanup', project_name=project_name)
+            self.log_info(f"Cleaned up workspace for successful project: {project_name}")
+        except Exception as e:
+            self.log_error(f"Failed to cleanup successful project {project_name}: {str(e)}")
+
+
+    def _ensure_clean_workspace(self, project_name: str) -> None:
+        """Ensure workspace is clean before starting new project"""
+        try:
+            workspace_path = Path(f"workspace/{project_name}")
+            
+            if workspace_path.exists():
+                self.log_warning(f"Found existing workspace for {project_name}, cleaning up...")
+                self._cleanup_existing_workspace(project_name)
+                
+                # Wait a moment for filesystem operations to complete
+                time.sleep(1)
+                
+                # Verify cleanup was successful
+                if workspace_path.exists():
+                    self.log_error(f"Failed to clean existing workspace: {workspace_path}")
+                    raise AutomationError(f"Cannot proceed - workspace cleanup failed for {project_name}")
+            
+            self.log_info(f"Workspace ready for {project_name}")
+            
+        except Exception as e:
+            self.log_error(f"Workspace preparation failed for {project_name}: {str(e)}")
+            raise AutomationError(f"Workspace preparation failed: {str(e)}")
+
+    def _cleanup_existing_workspace(self, project_name: str) -> None:
+        """Clean up existing workspace safely"""
+        try:
+            # Use the git component's cleanup method if available
+            self.components['git'].execute('cleanup', project_name=project_name)
+            self.log_info(f"Cleaned up existing workspace for: {project_name}")
+        except Exception as e:
+            self.log_warning(f"Git cleanup failed, trying manual cleanup: {str(e)}")
+            
+            # Fallback to manual cleanup
+            import shutil
+            workspace_path = Path(f"workspace/{project_name}")
+            if workspace_path.exists():
+                shutil.rmtree(workspace_path)
+                self.log_info(f"Manually removed workspace: {workspace_path}")
+
     
     def get_project_status(self, project_name: str) -> Dict[str, Any]:
         """Get status of a specific project"""
