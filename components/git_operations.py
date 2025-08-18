@@ -408,7 +408,21 @@ class GitOperations(BaseComponent):
             raise
     
     def cleanup(self) -> None:
-        """Clean up all Git resources"""
+        """Clean up Git resources with respect to cleanup configuration"""
+        # Get cleanup configuration from automation config
+        automation_config = self.config.get('automation', {})
+        cleanup_on_success = automation_config.get('cleanup_on_success', False)
+        preserve_workspaces = automation_config.get('preserve_workspaces', False)
+        
+        # If cleanup_on_success is False or preserve_workspaces is True, don't cleanup workspaces
+        if not cleanup_on_success or preserve_workspaces:
+            self.log_info("Preserving workspaces - cleanup_on_success=False or preserve_workspaces=True")
+            # Only cleanup the repos tracking dict, not the actual workspaces
+            self.repos.clear()
+            return
+        
+        # Only cleanup workspaces if explicitly configured to do so
+        self.log_info("Cleaning up all project workspaces (cleanup_on_success=True)")
         for project_name in list(self.repos.keys()):
             self.cleanup_project(project_name)
     

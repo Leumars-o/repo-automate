@@ -5,6 +5,7 @@ from pathlib import Path
 from core.base_component import BaseComponent
 from core.exceptions import GitHubError
 from utils.state_tracker import StateTracker
+from utils.pr_variations import PRVariations  # NEW IMPORT
 
 class GitHubManager(BaseComponent):
     """Manages GitHub operations with intelligent token rotation and state tracking"""
@@ -66,29 +67,38 @@ class GitHubManager(BaseComponent):
     
     def force_token_index(self, token_index: int) -> None:
         """Force a specific token index to be used immediately"""
-        # Don't allow forced token setting in batch mode
-        if self.batch_mode:
-            self.log_warning("Cannot force token index in batch mode - ignoring")
-            return
-            
         if token_index < 0 or token_index >= len(self.tokens):
             raise GitHubError(f"Invalid token index {token_index}. Available indices: 0-{len(self.tokens)-1}")
         
+        # CRITICAL FIX: Allow forced token assignment in batch mode for 1:1 mapping
+        # The batch mode should only disable manual overrides, not explicit 1:1 assignments
         self.forced_token_index = token_index
         self.current_token_index = token_index
-        self.log_info(f"Forced token index to: {token_index}")
+        
+        if self.batch_mode:
+            self.log_info(f"Assigned token index {token_index} for 1:1 mapping in batch mode")
+        else:
+            self.log_info(f"Forced token index to: {token_index}")
     
     def get_next_token_index(self, project_name: str = None) -> int:
         """Get the next available token index based on usage and availability"""
-        # In batch mode, always use state tracker for rotation
+        # CRITICAL FIX: In batch mode, always check for forced token first (1:1 assignment)
         if self.batch_mode:
-            token_index = self.state_tracker.get_next_available_token_index(
-                self.tokens, 
-                None  # No manual override in batch mode
-            )
-            self.current_token_index = token_index
-            self.log_info(f"Auto-selected token index {token_index} for project {project_name or 'unknown'}")
-            return token_index
+            # If forced_token_index is set (from 1:1 assignment), use it
+            if self.forced_token_index is not None:
+                token_index = self.forced_token_index
+                self.current_token_index = token_index
+                self.log_info(f"Using assigned token index {token_index} for project {project_name or 'unknown'} (1:1 mapping)")
+                return token_index
+            else:
+                # Fallback to state tracker rotation if no assignment
+                token_index = self.state_tracker.get_next_available_token_index(
+                    self.tokens, 
+                    None
+                )
+                self.current_token_index = token_index
+                self.log_info(f"Auto-selected token index {token_index} for project {project_name or 'unknown'} (batch mode)")
+                return token_index
         
         # If forced_token_index is set, always use it (single project mode)
         if self.forced_token_index is not None:
@@ -293,70 +303,72 @@ class GitHubManager(BaseComponent):
             raise GitHubError(f"Failed to create repository: {error_msg}")
     
     def create_pull_request(self, project: Dict[str, Any], branch_name: str = None, 
-                          source_branch: str = None, base_branch: str = "main") -> str:
-        """Create pull request - supports both branch_name and source_branch parameters"""
-        try:
-            from github import Github
-            
-            project_name = project['name']
-            token = self._get_current_token()
-            effective_index = self._get_effective_token_index()
-            self.log_info(f"Using token index {effective_index} for pull request creation")
-            
-            client = Github(token)
-            
-            user = client.get_user()
-            repo = user.get_repo(project_name)
-            
-            # Handle parameter compatibility - branch_name or source_branch
-            if branch_name is not None:
-                source_branch = branch_name
-            elif source_branch is None:
-                source_branch = "main"
-            
-            # If source and target are the same, we need to create a feature branch first
-            if source_branch == base_branch:
-                self.log_warning(f"Source and target branches are the same ({source_branch}), this may not create a proper PR")
-            
-            # Create pull request
-            title = f"Add {project_name} smart contract"
-            body = f"""# {project_name} Smart Contract
+                          source_branch: str = None, base_branch: str = "main", max_attempts: int = 3) -> str:
+        """Create pull request with retry logic and randomized content"""
+        
+        project_name = project['name']
+        
+        # Handle parameter compatibility - branch_name or source_branch
+        if branch_name is not None:
+            source_branch = branch_name
+        elif source_branch is None:
+            source_branch = "main"
+        
+        for attempt in range(max_attempts):
+            try:
+                from github import Github
+                
+                token = self._get_current_token()
+                effective_index = self._get_effective_token_index()
+                self.log_info(f"PR creation attempt {attempt + 1}/{max_attempts} using token index {effective_index}")
+                
+                client = Github(token)
+                
+                user = client.get_user()
+                repo = user.get_repo(project_name)
+                
+                # If source and target are the same, we need to create a feature branch first
+                if source_branch == base_branch:
+                    self.log_warning(f"Source and target branches are the same ({source_branch}), this may not create a proper PR")
+                
+                # UPDATED: Generate random PR content using PRVariations
+                pr_content = PRVariations.generate_pr_content(project_name)
+                title = pr_content['title']
+                body = pr_content['body']
+                
+                self.log_info(f"Generated unique PR content for {project_name}")
+                
+                pr = repo.create_pull(
+                    title=title,
+                    body=body,
+                    head=source_branch,
+                    base=base_branch
+                )
+                
+                pr_url = pr.html_url
+                self.log_info(f"Created pull request: {pr_url}")
+                
+                # Record successful token usage
+                self.record_token_usage(project_name, success=True)
+                
+                return pr_url
+                
+            except Exception as e:
+                error_msg = str(e)
+                self.log_warning(f"PR creation attempt {attempt + 1}/{max_attempts} failed: {error_msg}")
+                
+                # If this is the last attempt, record failure but don't raise exception
+                if attempt == max_attempts - 1:
+                    self.log_warning(f"All {max_attempts} PR creation attempts failed for {project_name}, but project still successful")
+                    self.record_token_usage(project_name, success=False, error=error_msg)
+                    return None  # Return None instead of raising exception
+                
+                # Wait before retry with exponential backoff
+                wait_time = (2 ** attempt)  # 1s, 2s, 4s
+                self.log_info(f"Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
 
-This pull request adds the smart contract implementation for {project_name}.
-
-## Changes
-- Added smart contract code
-- Added project configuration
-- Compiled and tested successfully
-
-## Generated by
-Smart Contract Automation System using token index {effective_index}
-"""
-            
-            pr = repo.create_pull(
-                title=title,
-                body=body,
-                head=source_branch,
-                base=base_branch
-            )
-            
-            pr_url = pr.html_url
-            self.log_info(f"Created pull request: {pr_url}")
-            
-            # Record successful token usage
-            self.record_token_usage(project_name, success=True)
-            
-            return pr_url
-            
-        except Exception as e:
-            error_msg = str(e)
-            self.log_error(f"Failed to create pull request for {project_name}: {error_msg}")
-            
-            # Record failed token usage
-            self.record_token_usage(project_name, success=False, error=error_msg)
-            
-            raise GitHubError(f"Failed to create pull request: {error_msg}")
-    
+ 
     def get_user_info(self, token_index: Optional[int] = None) -> Dict[str, str]:
         """Get current GitHub user information"""
         try:
