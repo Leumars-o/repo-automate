@@ -5,10 +5,13 @@ GitHub Token Setup Script
 ========================
 
 This script helps you set up GitHub tokens for the automation system.
+Includes account validation to check for flagged/restricted accounts.
 """
 
 import os
 import yaml
+import requests
+import time
 from pathlib import Path
 
 def create_secrets_directory():
@@ -43,6 +46,51 @@ def load_existing_tokens():
     except Exception as e:
         print(f"Warning: Could not read existing tokens file: {e}")
         return []
+
+def check_account_validity(username):
+    """
+    Check GitHub account validity - check if account exists without authentication
+    This is the proper way to detect flagged accounts
+    """
+    print(f"\n🔍 Checking account validity for: {username}")
+    
+    try:
+        # Check if user profile exists WITHOUT authentication - this is key!
+        # Flagged accounts return 404 when accessed without auth, even if they exist
+        user_response = requests.get(f'https://api.github.com/users/{username}')
+        
+        if user_response.status_code == 404:
+            return {
+                'status': 'flagged_or_nonexistent',
+                'user_exists': False,
+                'message': '❌ Account does not exist, is suspended, or is flagged',
+                'valid': False
+            }
+        
+        if user_response.status_code == 200:
+            user_data = user_response.json()
+            return {
+                'status': 'valid',
+                'user_exists': True,
+                'account_data': user_data,
+                'message': '✅ Account is valid and publicly accessible',
+                'valid': True
+            }
+        
+        return {
+            'status': 'unknown',
+            'user_exists': False,
+            'message': f'❌ Unexpected response: HTTP {user_response.status_code}',
+            'valid': False
+        }
+        
+    except requests.RequestException as e:
+        return {
+            'status': 'error',
+            'user_exists': False,
+            'message': f'❌ Error checking account: {str(e)}',
+            'valid': False
+        }
 
 def get_github_token():
     """Get GitHub token from user input"""
@@ -114,7 +162,6 @@ def save_tokens_to_yaml(new_token, secrets_dir):
         print(f"📋 Total tokens: {len(existing_tokens)}")
         return tokens_file, new_index
 
-
 def test_token_access(token):
     """Test if token works with GitHub API"""
     try:
@@ -123,9 +170,10 @@ def test_token_access(token):
         print("\n🔄 Testing GitHub token...")
         client = Github(token)
         user = client.get_user()
+        username = user.login
         
         print(f"✓ Token is valid!")
-        print(f"  - Username: {user.login}")
+        print(f"  - Username: {username}")
         print(f"  - Name: {user.name or 'Not set'}")
         print(f"  - Public repos: {user.public_repos}")
         
@@ -152,6 +200,18 @@ def test_token_access(token):
             else:
                 print(f"📧 Email: Error retrieving ({email_error})")
         
+        # Check account validity using our new function
+        account_status = check_account_validity(username)
+        print(f"  {account_status['message']}")
+        
+        if not account_status['valid']:
+            print(f"\n❌ Account validation failed: {account_status['status']}")
+            print("This means the account is flagged, suspended, or doesn't exist.")
+            continue_choice = input("Continue anyway? (y/N): ").lower()
+            if continue_choice != 'y':
+                print("❌ Setup cancelled due to account validation failure.")
+                return False
+        
         # Check rate limit
         try:
             rate_limit = client.get_rate_limit()
@@ -164,7 +224,38 @@ def test_token_access(token):
     except ImportError:
         print("⚠️  PyGithub not installed, cannot test token")
         print("   Install with: pip install PyGithub")
-        return False
+        
+        # Still try to do basic account validation with requests
+        print("\n🔍 Attempting basic account validation...")
+        try:
+            # Make a simple API call to get user info
+            headers = {'Authorization': f'token {token}'}
+            response = requests.get('https://api.github.com/user', headers=headers)
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                username = user_data['login']
+                print(f"✓ Basic token validation passed for: {username}")
+                
+                # Check account validity
+                account_status = check_account_validity(username)
+                print(f"  {account_status['message']}")
+                
+                if not account_status['valid']:
+                    print(f"\n❌ Account validation failed: {account_status['status']}")
+                    continue_choice = input("Continue anyway? (y/N): ").lower()
+                    if continue_choice != 'y':
+                        print("❌ Setup cancelled due to account validation failure.")
+                        return False
+                
+                return True
+            else:
+                print(f"❌ Token validation failed: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ Basic validation failed: {e}")
+            return False
+        
     except Exception as e:
         print(f"✗ Token test failed: {e}")
         return False
@@ -178,9 +269,16 @@ def main():
     # Get token from user
     token = get_github_token()
     
-    # Test token
+    # Test token (includes account validity check now)
     if not test_token_access(token):
-        print("\nWarning: Token test failed, but continuing...")
+        print("\n❌ Token validation failed!")
+        retry = input("Do you want to try with a different token? (y/N): ").lower()
+        if retry == 'y':
+            main()  # Restart the process
+            return
+        else:
+            print("❌ Setup cancelled.")
+            return
     
     # Save token and get index information
     tokens_file, token_index = save_tokens_to_yaml(token, secrets_dir)
