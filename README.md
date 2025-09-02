@@ -1,10 +1,10 @@
 # Smart Contract Automation System
 
-A comprehensive, modular automation system for generating, testing, and deploying smart contracts across multiple GitHub accounts using Claude Code integration.
+A comprehensive, modular automation system for generating, testing, and deploying smart contracts across multiple GitHub accounts using Claude Code integration with advanced state tracking and token management.
 
 ## 🏗️ Architecture Overview
 
-The system is built with a modular, scalable architecture where each component operates independently and can be modified without affecting the entire codebase.
+The system is built with a modular, scalable architecture where each component operates independently and can be modified without affecting the entire codebase. The system now includes persistent state tracking, intelligent token rotation, and project completion management.
 
 ### Directory Structure
 ```
@@ -21,7 +21,7 @@ smart_contract_automation/
 │   └── exceptions.py          # Custom exceptions
 ├── components/
 │   ├── __init__.py
-│   ├── github_manager.py      # GitHub operations
+│   ├── github_manager.py      # GitHub operations with token rotation
 │   ├── git_operations.py      # Git operations
 │   ├── claude_interface.py    # Claude Code integration
 │   ├── contract_manager.py    # Smart contract operations
@@ -31,13 +31,18 @@ smart_contract_automation/
 │   ├── logger.py              # Logging utilities
 │   ├── validators.py          # Input validation
 │   └── helpers.py             # Helper functions
+├── secrets/                   # State persistence (gitignored)
+│   ├── tokens.yaml           # GitHub tokens
+│   ├── token_state.json      # Token usage tracking
+│   ├── project_state.json    # Project completion tracking
+│   └── execution_log.json    # Detailed execution logs
 ├── tests/
 │   ├── __init__.py
 │   ├── test_components.py
 │   └── test_integration.py
-├── workspace/                 # Local project workspace
-├── results/                   # Automation results
-├── logs/                      # System logs
+├── workspaces/               # Local project workspace
+├── results/                  # Automation results
+├── logs/                     # System logs
 ├── requirements.txt
 └── README.md
 ```
@@ -56,9 +61,17 @@ Abstract base class that provides:
 Central coordinator that:
 - Manages component lifecycle
 - Coordinates the complete workflow
-- Handles parallel processing
+- Handles state tracking and persistence
 - Provides progress monitoring
-- Manages error recovery
+- Manages error recovery and token rotation
+
+### **StateTracker**
+Persistent state management that:
+- Tracks project completion status
+- Manages token usage and rotation
+- Handles blacklist management
+- Provides session resume capability
+- Maintains execution audit trail
 
 ### **ConfigManager**
 Configuration hub that:
@@ -70,12 +83,13 @@ Configuration hub that:
 ## 🔧 Functional Components
 
 ### **GitHubManager**
-GitHub integration component:
+GitHub integration component with intelligent token management:
 - **Repository Management**: Creates repos with custom settings
-- **Token Rotation**: Automatic switching between 50+ GitHub accounts
-- **Rate Limit Handling**: Monitors and respects API limits
+- **Intelligent Token Rotation**: Automatic switching with usage tracking
+- **Rate Limit Handling**: Monitors and respects API limits with blacklisting
 - **Pull Request Creation**: Automated PR generation
-- **Account Management**: Seamless multi-account operations
+- **Multi-Account Operations**: Seamless operation across 50+ accounts
+- **Token Health Monitoring**: Automatic blacklisting of failed tokens
 
 ### **GitOperations**
 Git workflow management:
@@ -98,7 +112,7 @@ Smart contract operations:
 - **Multi-Blockchain Support**: Stacks, Ethereum, and extensible
 - **Environment Setup**: Automated toolchain initialization
 - **Compilation**: Cross-platform contract compilation
-- **Testing**: Automated test execution
+- **Testing**: Automated test execution with optional testing mode
 - **Deployment**: Testnet/mainnet deployment management
 
 ### **ResultTracker**
@@ -129,6 +143,9 @@ pip install -r requirements.txt
 # Setup configuration
 cp config/settings.yaml.example config/settings.yaml
 # Edit config/settings.yaml with your tokens and projects
+
+# Create secrets directory for state tracking
+mkdir -p secrets
 ```
 
 ### Configuration Setup
@@ -138,7 +155,7 @@ github:
   tokens:
     - "ghp_your_token_1"
     - "ghp_your_token_2"
-    # Add all 50 tokens
+    # Add all your GitHub tokens
 
 projects:
   - name: "DeFiLendingProtocol"
@@ -168,262 +185,168 @@ automation:
   cleanup_on_failure: true
 ```
 
-## 📋 Usage
+## 📋 Usage Commands
 
-### Basic Commands
+### **Complete CLI Reference**
+
 ```bash
-# Run complete automation for all projects
+# Core Actions
+--config/-c          # Configuration file path (default: config/settings.yaml)
+--action/-a          # Action: run, single, test, status, summary, state, reset-state
+--verbose/-v         # Enable verbose logging
+
+# Project Selection
+--project/-p         # Project name for single operations
+--token-index/-t     # Manual token selection (0-based index)
+--with-tests         # Enable testing for single projects
+
+# Batch Processing Options
+--skip-completed     # Skip completed projects (default: True)
+--force              # Force reprocess completed projects
+
+# State Management
+--reset-tokens       # Reset token state tracking
+--reset-projects     # Reset project completion tracking
+```
+
+### **Basic Usage**
+
+```bash
+# Run complete automation for all projects (skip completed)
 python main.py --action run
 
-# Run single project
-python main.py --action single --project "DeFiLendingProtocol"
+# Run complete automation including completed projects
+python main.py --action run --force
 
 # Check system status
 python main.py --action status
 
+# View state tracking summary
+python main.py --action state
+
 # Generate summary report
 python main.py --action summary
-
-# Verbose logging
-python main.py --action run --verbose
 ```
 
-### Advanced Usage
+### **Single Project Operations**
+
+```bash
+# Run single project with auto token selection
+python main.py --action single --project "Escrow-chain"
+
+# Run single project with specific token
+python main.py --action single --project "Escrow-chain" --token-index 2
+
+# Run single project with testing enabled
+python main.py --action single --project "Escrow-chain" --with-tests
+
+# Combine manual token selection with testing
+python main.py --action single --project "Escrow-chain" --token-index 1 --with-tests
+```
+
+### **Testing Operations**
+
+```bash
+# Test existing project (requires prior compilation)
+python main.py --action test --project "Escrow-chain"
+```
+
+### **State Management**
+
+```bash
+# View comprehensive state summary
+python main.py --action state
+
+# Reset token usage tracking
+python main.py --action reset-state --reset-tokens
+
+# Reset project completion tracking
+python main.py --action reset-state --reset-projects
+
+# Reset all state tracking
+python main.py --action reset-state --reset-tokens --reset-projects
+```
+
+### **Advanced Usage**
+
 ```bash
 # Custom configuration file
 python main.py --config custom_config.yaml --action run
 
-# Process specific project with custom settings
+# Verbose logging for debugging
 python main.py --action single --project "MyContract" --verbose
+
+# Force reprocess with verbose output
+python main.py --action run --force --verbose
 ```
 
 ## 🔄 Workflow Process
 
 For each project, the system executes:
 
-1. **GitHub Repository Creation**
-   - Creates repository using current token
+1. **State Check & Token Selection**
+   - Checks if project is already completed (unless --force)
+   - Selects least-used, non-blacklisted token
+   - Records execution start in state tracking
+
+2. **GitHub Repository Creation**
+   - Creates repository using selected token
    - Applies configured repository settings
    - Handles name conflicts and permissions
 
-2. **Local Environment Setup**
+3. **Local Environment Setup**
    - Clones repository to local workspace
    - Configures Git user settings
    - Sets up project-specific branching
 
-3. **Smart Contract Environment**
+4. **Smart Contract Environment**
    - Initializes blockchain-specific toolchain
    - Installs required dependencies
    - Configures testing framework
 
-4. **AI-Powered Contract Generation**
+5. **AI-Powered Contract Generation**
    - Calls Claude Code with project context
    - Generates production-ready smart contract
    - Includes comprehensive documentation
 
-5. **Compilation and Testing Loop**
+6. **Compilation and Testing Loop**
    - Compiles contract with blockchain tools
-   - Runs automated tests
+   - Runs automated tests (if enabled)
    - Fixes errors using Claude Code feedback
    - Repeats until successful
 
-6. **Git Operations**
+7. **Git Operations**
    - Commits generated code with meaningful messages
    - Pushes to remote repository
    - Handles merge conflicts
 
-7. **Pull Request Creation**
+8. **Pull Request Creation**
    - Creates PR with detailed description
    - Links to deployment information
    - Records PR URL for tracking
 
-8. **Token Rotation**
-   - Automatically switches to next GitHub account
-   - Monitors rate limits
-   - Handles authentication errors
+9. **State Persistence**
+   - Records project completion status
+   - Updates token usage statistics
+   - Saves execution metrics and results
 
-9. **Result Tracking**
-   - Records all metrics and outcomes
-   - Generates detailed reports
-   - Updates success/failure statistics
+10. **Token Management**
+    - Updates token usage counters
+    - Handles rate limiting and blacklisting
+    - Prepares for next project execution
 
-## 📊 Monitoring & Results
+## 📊 State Tracking & Token Management
 
-### Real-Time Status
-- **Project Progress**: Live updates on current operations
-- **Component Health**: Individual component status monitoring
-- **Performance Metrics**: Duration, success rates, error patterns
-- **Resource Usage**: Token rotation, API calls, disk space
+### **Persistent State Features**
 
-### Reporting Features
-- **JSON Export**: Machine-readable results for integration
-- **CSV Export**: Spreadsheet-compatible format
-- **Summary Reports**: Executive-level overview
-- **Error Analysis**: Detailed failure pattern recognition
-- **Performance Analytics**: Optimization insights
+The system maintains persistent state across sessions:
 
-### Sample Output
-```
-=== AUTOMATION SUMMARY REPORT ===
+- **Token Usage Tracking**: Monitors usage count, last used time, blacklist status
+- **Project Completion**: Tracks successful completions, failures, and execution metrics  
+- **Session Resume**: Automatically resumes interrupted batch processing
+- **Intelligent Token Selection**: Auto-selects least used, healthy tokens
 
-Overall Results:
-  Total Projects: 50
-  Successful: 47
-  Failed: 3
-  Success Rate: 94.0%
-  Contracts Generated: 47
-  Pull Requests Created: 47
-
-Performance:
-  Total Duration: 2847.3 seconds
-  Average Duration: 56.9 seconds
-  Avg Successful Duration: 52.1 seconds
-
-Common Errors:
-  CompilationError: 2 occurrences
-  NetworkTimeout: 1 occurrence
-```
-
-## 🛠️ Extensibility
-
-### Adding New Blockchain Support
-1. Extend `ContractManager` with new blockchain methods
-2. Add blockchain-specific configuration options
-3. Implement compilation and testing logic
-4. Update project templates
-
-### Custom Error Handling
-1. Create custom exceptions in `core/exceptions.py`
-2. Implement error-specific recovery logic
-3. Add error patterns to result tracking
-4. Update Claude Code prompts for error context
-
-### Component Customization
-1. Inherit from `BaseComponent`
-2. Implement required abstract methods
-3. Add to orchestrator component registry
-4. Update configuration schema
-
-## 🔒 Security Considerations
-
-- **Token Management**: Secure storage and rotation of GitHub tokens
-- **Code Review**: Automated security scanning of generated contracts
-- **Network Security**: HTTPS-only communications
-- **Error Handling**: Sensitive information filtering in logs
-- **Access Control**: Component-level permission management
-
-## 🚨 Error Recovery
-
-The system handles various failure scenarios:
-
-### Compilation Errors
-- Sends error context back to Claude Code
-- Implements retry logic with exponential backoff
-- Maintains error history for pattern analysis
-
-### GitHub API Limits
-- Automatic token rotation
-- Rate limit monitoring
-- Graceful degradation strategies
-
-### Network Issues
-- Configurable timeout handling
-- Automatic retry mechanisms
-- Offline mode capabilities
-
-### Claude Code Timeouts
-- Fallback to simpler prompts
-- Progressive timeout increases
-- Manual intervention alerts
-
-## 📈 Performance Optimization
-
-### Parallel Processing
-- Configurable worker threads
-- Resource-aware scheduling
-- Load balancing across GitHub accounts
-
-### Caching Strategies
-- Template caching for common contracts
-- Configuration caching
-- Result caching for repeated operations
-
-### Resource Management
-- Automatic cleanup of temporary files
-- Memory usage monitoring
-- Disk space management
-
-## 🧪 Testing
-
-### Unit Tests
-```bash
-# Run all unit tests
-python -m pytest tests/
-
-# Run specific component tests
-python -m pytest tests/test_components.py
-
-# Run with coverage
-python -m pytest tests/ --cov=components --cov-report=html
-```
-
-### Integration Tests
-```bash
-# Run integration tests
-python -m pytest tests/test_integration.py
-
-# Test with sample configuration
-python -m pytest tests/ --config tests/sample_config.yaml
-```
-
-## 🤝 Contributing
-
-1. **Fork the repository**
-2. **Create feature branch**: `git checkout -b feature/new-component`
-3. **Implement changes** following the component pattern
-4. **Add tests** for new functionality
-5. **Update documentation** as needed
-6. **Submit pull request** with detailed description
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For issues, questions, or contributions:
-- **Documentation**: Check the `/docs` directory
-- **Issues**: Use GitHub issues for bug reports
-
-
-
-
-# Individual component debugging (uses your existing files)
-python debug/debug_runner.py config
-python debug/debug_runner.py github
-python debug/debug_runner.py git_operations
-
-# Full system debug (runs all 6 components)
-python debug/debug_runner.py full
-
-# With verbose output and report generation
-python debug/debug_runner.py full --verbose --save-report
-
-
-
-# State Tracking and Token Management - Usage Guide
-
-## 🎯 Overview
-
-The automation system now includes comprehensive state tracking that persists across sessions:
-
-- **Token rotation and usage tracking**
-- **Project completion tracking** 
-- **Blacklist management for failed tokens**
-- **Manual token selection**
-- **Resume interrupted executions**
-
-## 📁 State Files
+### **State Files**
 
 All state is stored in JSON files in the `secrets/` directory:
 
@@ -435,124 +358,33 @@ secrets/
 └── execution_log.json    # Detailed execution logs
 ```
 
-## 🔧 New CLI Commands
+### **Token Management Features**
 
-### **Single Project with Token Selection**
-```bash
-# Auto-select least used token
-python main.py --action single --project "Escrow-chain"
+**Automatic Token Selection**: System selects optimal token based on:
+- Usage frequency (prefers least used)
+- Recent usage timing
+- Blacklist status
+- Rate limit status
 
-# Use specific token (index 2)
-python main.py --action single --project "Escrow-chain" --token-index 2
+**Token Blacklisting**: Automatic blacklisting for:
+- Rate limiting errors (403, 429)
+- Authentication failures (401)
+- Persistent API errors
 
-# With testing enabled
-python main.py --action single --project "Escrow-chain" --with-tests
+**Manual Token Override**: Force specific token usage when needed
 
-# Combine token selection + testing
-python main.py --action single --project "Escrow-chain" --token-index 1 --with-tests
-```
+### **Project Completion Tracking**
 
-### **Batch Processing with Smart Resume**
-```bash
-# Process all incomplete projects (default)
-python main.py --action run
+**Smart Skip Logic**: Automatically skips completed projects unless:
+- `--force` flag is used
+- Project completion status is manually reset
 
-# Force reprocess completed projects
-python main.py --action run --force
+**Failure Recovery**: Tracks failed projects with:
+- Failure count and timestamps
+- Error details and context
+- Retry eligibility
 
-# Process all projects (including completed)
-python main.py --action run --skip-completed=false
-```
-
-### **State Management**
-```bash
-# View state summary
-python main.py --action state
-
-# Reset token usage tracking
-python main.py --action reset-state --reset-tokens
-
-# Reset project completion tracking  
-python main.py --action reset-state --reset-projects
-
-# Reset everything
-python main.py --action reset-state --reset-tokens --reset-projects
-```
-
-### **Testing Only**
-```bash
-# Test existing project
-python main.py --action test --project "Escrow-chain"
-```
-
-## 🔑 Token Management Features
-
-### **Automatic Token Selection**
-The system automatically selects the least-used, non-blacklisted token:
-
-```python
-# Token usage is tracked:
-Token 0: Used 5 times, last used 2 hours ago
-Token 1: Used 2 times, last used 1 hour ago  ← Will be selected
-Token 2: Used 8 times, blacklisted (rate limited)
-```
-
-### **Token Blacklisting**
-Tokens are automatically blacklisted when they encounter:
-- Rate limiting errors
-- Authentication failures (401, 403)
-- Other persistent failures
-
-### **Manual Token Override**
-```bash
-# Force use of specific token
-python main.py --action single --project "Project1" --token-index 3
-```
-
-## 📋 Project Completion Tracking
-
-### **Automatic Skip of Completed Projects**
-```bash
-# Only processes incomplete projects
-python main.py --action run
-```
-
-Output:
-```
-⏭️  Skip mode: Will skip completed projects
-Skipping 3 already completed projects
-Starting automation for 2 projects
-```
-
-### **Completion Status Check**
-```bash
-python main.py --action single --project "AlreadyDone"
-```
-
-Output:
-```
-⚠️  Project 'AlreadyDone' has already been completed successfully!
-   Use --force flag to reprocess completed projects (coming soon)
-```
-
-## 🔄 Smart Resume After Interruption
-
-If you interrupt batch processing (Ctrl+C), the system remembers:
-- Which projects were completed
-- Which tokens were used
-- Any blacklisted tokens
-
-When you restart:
-```bash
-python main.py --action run
-```
-
-It will:
-1. ✅ Skip completed projects
-2. 🔄 Resume with next available token
-3. 📋 Continue from where it left off
-
-## 📊 State Summary Example
+### **State Summary Example**
 
 ```bash
 python main.py --action state
@@ -580,9 +412,46 @@ STATE TRACKING SUMMARY
 
 ⏳ Incomplete Projects (3):
   - DeFi-lending
-  - NFT-marketplace  
+  - NFT-marketplace
   - DAO-governance
 ============================================================
+```
+
+## 📊 Monitoring & Results
+
+### **Real-Time Status**
+- **Project Progress**: Live updates on current operations
+- **Component Health**: Individual component status monitoring
+- **Performance Metrics**: Duration, success rates, error patterns
+- **Resource Usage**: Token rotation, API calls, disk space
+
+### **Reporting Features**
+- **JSON Export**: Machine-readable results for integration
+- **CSV Export**: Spreadsheet-compatible format
+- **Summary Reports**: Executive-level overview
+- **Error Analysis**: Detailed failure pattern recognition
+- **Performance Analytics**: Optimization insights
+
+### **Sample Output**
+```
+=== AUTOMATION SUMMARY REPORT ===
+
+Overall Results:
+  Total Projects: 50
+  Successful: 47
+  Failed: 3
+  Success Rate: 94.0%
+  Contracts Generated: 47
+  Pull Requests Created: 47
+
+Performance:
+  Total Duration: 2847.3 seconds
+  Average Duration: 56.9 seconds
+  Avg Successful Duration: 52.1 seconds
+
+Common Errors:
+  CompilationError: 2 occurrences
+  NetworkTimeout: 1 occurrence
 ```
 
 ## 🛠️ Advanced Usage Scenarios
@@ -619,7 +488,58 @@ python main.py --action reset-state --reset-tokens
 # Or manually edit secrets/token_state.json
 ```
 
-## 🚨 Error Handling
+## 🛠️ Extensibility
+
+### **Adding New Blockchain Support**
+1. Extend `ContractManager` with new blockchain methods
+2. Add blockchain-specific configuration options
+3. Implement compilation and testing logic
+4. Update project templates
+
+### **Custom Error Handling**
+1. Create custom exceptions in `core/exceptions.py`
+2. Implement error-specific recovery logic
+3. Add error patterns to result tracking
+4. Update Claude Code prompts for error context
+
+### **Component Customization**
+1. Inherit from `BaseComponent`
+2. Implement required abstract methods
+3. Add to orchestrator component registry
+4. Update configuration schema
+
+## 🔒 Security Considerations
+
+- **Token Management**: Secure storage and rotation of GitHub tokens in `secrets/` directory
+- **Code Review**: Automated security scanning of generated contracts
+- **Network Security**: HTTPS-only communications
+- **Error Handling**: Sensitive information filtering in logs
+- **Access Control**: Component-level permission management
+- **State Persistence**: Secure JSON storage with proper file permissions
+
+## 🚨 Error Recovery
+
+The system handles various failure scenarios:
+
+### **Compilation Errors**
+- Sends error context back to Claude Code
+- Implements retry logic with exponential backoff
+- Maintains error history for pattern analysis
+
+### **GitHub API Limits**
+- Automatic token rotation with blacklisting
+- Rate limit monitoring with intelligent backoff
+- Graceful degradation strategies
+
+### **Network Issues**
+- Configurable timeout handling
+- Automatic retry mechanisms
+- Offline mode capabilities
+
+### **Claude Code Timeouts**
+- Fallback to simpler prompts
+- Progressive timeout increases
+- Manual intervention alerts
 
 ### **Token Exhaustion**
 If all tokens are blacklisted:
@@ -628,87 +548,95 @@ Warning: All tokens are blacklisted, resetting blacklist...
 ```
 The system automatically resets and continues.
 
-### **Stale Progress Cleanup**
-The system automatically cleans up stale "in progress" entries from crashed executions (older than 24 hours).
+## 📈 Performance Optimization
 
-## 📝 JSON State File Examples
+### **Parallel Processing**
+- Configurable worker threads
+- Resource-aware scheduling
+- Load balancing across GitHub accounts
 
-### **token_state.json**
-```json
-{
-  "current_token_index": 2,
-  "token_usage": {
-    "a1b2c3d4": {
-      "index": 0,
-      "usage_count": 5,
-      "last_used": "2025-01-15T10:30:00",
-      "projects_completed": ["Project1", "Project2"],
-      "rate_limited": false
-    }
-  },
-  "tokens_blacklisted": ["x9y8z7w6"],
-  "rotation_count": 15
-}
+### **Caching Strategies**
+- Template caching for common contracts
+- Configuration caching
+- Result caching for repeated operations
+
+### **Resource Management**
+- Automatic cleanup of temporary files
+- Memory usage monitoring
+- Disk space management
+
+### **State-Aware Processing**
+- Skip completed projects by default
+- Intelligent token selection
+- Resume interrupted executions
+
+## 🧪 Testing
+
+### **Unit Tests**
+```bash
+# Run all unit tests
+python -m pytest tests/
+
+# Run specific component tests
+python -m pytest tests/test_components.py
+
+# Run with coverage
+python -m pytest tests/ --cov=components --cov-report=html
 ```
 
-### **project_state.json**
-```json
-{
-  "completed_projects": {
-    "Escrow-chain": {
-      "completion_time": "2025-01-15T10:30:00", 
-      "token_index": 1,
-      "duration": 45.2,
-      "pr_url": "https://github.com/user/escrow-chain/pull/1",
-      "status": "success"
-    }
-  },
-  "failed_projects": {
-    "BadProject": {
-      "failure_count": 3,
-      "last_failure": "2025-01-15T09:15:00",
-      "last_error": "Compilation failed"
-    }
-  }
-}
+### **Integration Tests**
+```bash
+# Run integration tests
+python -m pytest tests/test_integration.py
+
+# Test with sample configuration
+python -m pytest tests/ --config tests/sample_config.yaml
 ```
 
-## 🎉 Benefits
+### **Contract Testing**
+```bash
+# Test specific project contracts
+python main.py --action test --project "ProjectName"
 
-1. **Session Persistence**: Never lose progress when interrupted
-2. **Smart Token Usage**: Optimal distribution across token pool
-3. **Failure Recovery**: Automatic blacklisting and recovery
-4. **Manual Control**: Override automatic behavior when needed
-5. **Comprehensive Logging**: Full audit trail of all operations
+# Run project with testing enabled
+python main.py --action single --project "ProjectName" --with-tests
+```
 
-This implementation ensures robust, scalable automation even with large token pools and extended execution times!
+## 🤝 Contributing
 
---config/-c          # Configuration file path
---action/-a          # Action to perform (run, single, test, state, etc.)
---project/-p         # Project name for single operations
---token-index/-t     # Manual token selection (0-based)
---with-tests         # Enable testing for single projects
---skip-completed     # Skip completed projects (default: True)
---force              # Force reprocess completed projects
---reset-tokens       # Reset token state tracking
---reset-projects     # Reset project completion tracking
---verbose/-v         # Enable verbose logging
+1. **Fork the repository**
+2. **Create feature branch**: `git checkout -b feature/new-component`
+3. **Implement changes** following the component pattern
+4. **Add tests** for new functionality
+5. **Update documentation** as needed
+6. **Submit pull request** with detailed description
 
+## 📄 License
 
-# Single project with auto token selection
-python main.py --action single --project "Escrow-chain"
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-# Single project with manual token
-python main.py --action single --project "Escrow-chain" --token-index 2
+## 🆘 Support
 
-# Batch processing (skip completed)
-python main.py --action run
+For issues, questions, or contributions:
+- **Documentation**: Check the `/docs` directory
+- **Issues**: Use GitHub issues for bug reports
+- **State Issues**: Check `secrets/` directory for state files
+- **Token Issues**: Verify tokens in `secrets/tokens.yaml`
 
-# Force reprocess all projects
-python main.py --action run --force
+## 📋 Quick Start Checklist
 
-# View state tracking
-python main.py --action state
+1. ✅ Install Python 3.8+ and dependencies
+2. ✅ Setup `config/settings.yaml` with your tokens and projects
+3. ✅ Create `secrets/` directory for state tracking
+4. ✅ Test with single project: `python main.py --action single --project "YourProject"`
+5. ✅ Run batch processing: `python main.py --action run`
+6. ✅ Monitor state: `python main.py --action state`
 
-# Reset tracking data
-python main.py --action reset-state --reset-tokens --reset-projects
+## 💡 Pro Tips
+
+- **Start Small**: Test with single projects before batch processing
+- **Monitor State**: Regularly check `python main.py --action state`
+- **Token Health**: Reset blacklisted tokens if they're working again
+- **Backup State**: Copy `secrets/` directory before major changes
+- **Use Force Carefully**: `--force` will reprocess completed projects
+- **Testing Optional**: Use `--with-tests` only when you need test validation
