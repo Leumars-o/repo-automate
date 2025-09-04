@@ -7,21 +7,21 @@ class PRVariations:
     
     # 20 different PR title templates
     PR_TITLES = [
-        "Add {project_name} smart contract",
+        "Added {project_name} smart contract",
         "Implement {project_name} blockchain solution",
-        "Deploy {project_name} smart contract system",
-        "Introduce {project_name} decentralized application",
-        "Create {project_name} blockchain infrastructure",
+        "Deployed {project_name} smart contract system",
+        "Introduced {project_name} decentralized application",
+        "Created {project_name} blockchain infrastructure",
         "Built {project_name} smart contract protocol",
-        "Launch {project_name} DeFi implementation",
-        "Establish {project_name} blockchain framework",
+        "Launched {project_name} DeFi implementation",
+        "Established {project_name} blockchain framework",
         "Developed {project_name} smart contract architecture",
-        "Initialize {project_name} decentralized protocol",
+        "Initialized {project_name} decentralized protocol",
         "Construct {project_name} blockchain solution",
-        "Engineer {project_name} smart contract platform",
+        "Engineered {project_name} smart contract platform",
         "Implemented {project_name} blockchain application",
         "Created {project_name} smart contract ecosystem",
-        "Integrate {project_name} blockchain technology",
+        "Integrated {project_name} blockchain technology",
         "{project_name} decentralized protocol implementation",
         "{project_name} blockchain application implementation"
     ]
